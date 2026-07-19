@@ -29,8 +29,10 @@ pwa/                     # la PWA (routes en hash : #/match/{id}, #/equipe/{id}�
 ## Mise en route
 
 1. **Supabase** : créer (ou réutiliser) un projet, puis dans l'éditeur SQL
-   exécuter `sql/schema.sql`, **puis** `sql/rpc_place_bet.sql`,
-   **puis** `sql/standings.sql` (l'ordre compte).
+   coller `sql/install_complet.sql` en un seul coup (généré — équivaut à
+   `schema.sql` + `rpc_place_bet.sql` + `standings.sql` dans l'ordre ;
+   régénérer après modif : `cat schema.sql rpc_place_bet.sql standings.sql`
+   avec l'en-tête, voir historique git).
 2. **Utilisateur** : créer le compte partagé dans Authentication → Users
    (email + mot de passe), puis créditer le solde initial d'Éclats :
    ```sql
