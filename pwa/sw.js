@@ -6,8 +6,8 @@ const SHELL = [
   './', 'index.html', 'css/style.css', 'manifest.json',
   'js/app.js', 'js/router.js', 'js/supabase.js', 'js/api.js', 'js/ui.js',
   'js/config.js',
-  'js/pages/accueil.js', 'js/pages/equipe.js', 'js/pages/match.js',
-  'js/pages/mes-paris.js', 'js/pages/reglages.js',
+  'js/pages/accueil.js', 'js/pages/classement.js', 'js/pages/equipe.js',
+  'js/pages/match.js', 'js/pages/mes-paris.js', 'js/pages/reglages.js',
   'icons/icon-192.png', 'icons/icon-512.png',
 ];
 

@@ -68,6 +68,19 @@ export function probaImplicite(cote) {
   return `${Math.round(100 / Number(cote))} %`;
 }
 
+// "1" -> "1er", "3" -> "3e"
+export function ordinal(position) {
+  if (position === undefined || position === null) return '—';
+  return position === 1 ? '1er' : `${position}e`;
+}
+
+// Lien de secours vers un classement externe quand aucune donnée
+// /standings n'est encore en base pour ce championnat.
+export function lienClassementExterne(ligue) {
+  const q = encodeURIComponent(`classement ${ligue?.name || ''} ${ligue?.country && ligue.country !== 'World' ? ligue.country : ''}`.trim());
+  return `https://www.google.com/search?q=${q}`;
+}
+
 export function chargement() {
   return '<p class="muet">Chargement…</p>';
 }

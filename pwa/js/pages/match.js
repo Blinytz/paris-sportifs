@@ -6,11 +6,12 @@
 
 import {
   confrontations, dernieresCotes, lireMatch, lireReglages, matchsEquipe,
-  mesParisSurMatch, placerPari, statsCompetition, statsGlobales,
+  mesParisSurMatch, placerPari, positionsDansLigue, statsCompetition,
+  statsGlobales,
 } from '../api.js';
 import {
   badgesForme, chargement, dateHeure, echapper, erreur, formeDepuisMatchs,
-  nombre, probaImplicite,
+  nombre, ordinal, probaImplicite,
 } from '../ui.js';
 
 const SELECTIONS = { home: '1 (domicile)', draw: 'Nul', away: '2 (extérieur)' };
@@ -37,9 +38,12 @@ export async function pageMatch(conteneur, matchId) {
 }
 
 function entete(match, sousTitre) {
+  const lienClassement = match.league?.category === 'championnat'
+    ? ` · <a class="lien-classement" href="#/classement/${match.league_id}">Classement</a>`
+    : '';
   return `
     <header class="entete-page">
-      <p class="muet">${echapper(match.league?.name)} · ${dateHeure(match.kickoff_at)}</p>
+      <p class="muet">${echapper(match.league?.name)} · ${dateHeure(match.kickoff_at)}${lienClassement}</p>
       <h1 class="affiche">
         <a href="#/equipe/${match.home_team_id}">${echapper(match.home?.name)}</a>
         <span class="muet">${sousTitre}</span>
@@ -182,6 +186,12 @@ const moyenne = (somme, total) => total ? nombre(somme / total, 1) : '—';
 
 async function blocComparatif(match, cotes, avant) {
   const fenetre = (await lireReglages())?.form_window_size || 5;
+  // Position au classement (championnats uniquement — classement actuel,
+  // pas historisé à l'avant-match)
+  const positions = match.league?.category === 'championnat'
+    ? await positionsDansLigue(match.league_id,
+        [match.home_team_id, match.away_team_id])
+    : new Map();
   const equipes = [
     { id: match.home_team_id, nom: match.home?.name, rating: match.home?.rating,
       camp: 'home', libelleCamp: 'domicile' },
@@ -212,9 +222,13 @@ async function blocComparatif(match, cotes, avant) {
 
     const coteEquipe = cotes
       ? (e.camp === 'home' ? cotes.home_odds : cotes.away_odds) : null;
+    const rang = positions.get(e.id);
     return `
       <div class="colonne-equipe">
         <h3><a href="#/equipe/${e.id}">${echapper(e.nom)}</a></h3>
+        ${rang ? `<p><a class="lien-classement" href="#/classement/${match.league_id}">
+          ${echapper(ordinal(rang.position))} du championnat
+          (${nombre(rang.points)} pts)</a></p>` : ''}
         <p>Elo <strong>${nombre(e.rating, 1)}</strong>
           · proba implicite ${probaImplicite(coteEquipe)}</p>
         <p>Forme globale<br>${badgesForme(formeDepuisMatchs(tous, e.id, fenetre))}</p>

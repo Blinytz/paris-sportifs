@@ -3,6 +3,7 @@
 // #/equipe/{id} et #/match/{id}.
 
 import { pageAccueil } from './pages/accueil.js';
+import { pageClassement } from './pages/classement.js';
 import { pageEquipe } from './pages/equipe.js';
 import { pageMatch } from './pages/match.js';
 import { pageMesParis } from './pages/mes-paris.js';
@@ -12,6 +13,7 @@ const ROUTES = [
   { motif: /^\/?$/, rendu: pageAccueil },
   { motif: /^\/accueil$/, rendu: pageAccueil },
   { motif: /^\/equipe\/([0-9a-f-]+)$/, rendu: pageEquipe },
+  { motif: /^\/classement\/([0-9a-f-]+)$/, rendu: pageClassement },
   { motif: /^\/match\/([0-9a-f-]+)$/, rendu: pageMatch },
   { motif: /^\/mes-paris$/, rendu: pageMesParis },
   { motif: /^\/reglages$/, rendu: pageReglages },

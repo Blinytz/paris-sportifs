@@ -60,6 +60,15 @@ class SupabaseDB:
         r.raise_for_status()
         return r.json() if return_rows else None
 
+    def delete(self, table, params):
+        """DELETE sur les lignes filtrées par params (params obligatoire :
+        jamais de delete sans filtre)."""
+        if not params:
+            raise ValueError("delete sans filtre refusé")
+        r = self.session.delete(f"{self.base}/{table}", params=params,
+                                headers={"Prefer": "return=minimal"}, timeout=30)
+        r.raise_for_status()
+
 
 def load_settings(db):
     """Charge la ligne unique de model_settings (règle 10 : jamais de

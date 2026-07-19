@@ -139,6 +139,21 @@ label input { width: 100%; margin-top: 0.2rem; }
 .champ-reglage input { max-width: 10rem; }
 .aide { margin: 0.4rem 0 0; }
 
+/* Classement */
+.tableau-defilant { overflow-x: auto; padding: 0.4rem; }
+table.classement { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+table.classement th, table.classement td {
+  padding: 0.35rem 0.5rem; text-align: center; white-space: nowrap;
+}
+table.classement th { color: var(--texte-muet); font-weight: 400; font-size: 0.8rem; }
+table.classement tbody tr { border-top: 1px solid var(--bordure); }
+table.classement tbody tr:hover { background: var(--fond-carte-survol); }
+table.classement .gauche { text-align: left; }
+table.classement .position { color: var(--texte-muet); }
+table.classement a:hover { color: var(--accent); }
+.lien-classement { font-size: 0.85rem; color: var(--accent); }
+.lien-classement:hover { text-decoration: underline; }
+
 /* Connexion */
 #connexion { display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 1rem; }
 #connexion[hidden] { display: none; }

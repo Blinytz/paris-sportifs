@@ -22,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 
 from db import SupabaseDB, load_settings
 from elo import ELO_START, generate_odds, update_elo
-from highlightly_client import HighlightlyClient
+from highlightly_client import HighlightlyClient, parse_standings
 from stats import update_stats_for_match
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -30,6 +30,13 @@ log = logging.getLogger("sync")
 
 # Fenêtres de dates par sport (jours relatifs à aujourd'hui UTC) — section 5
 WINDOWS = {"football": (-1, 1), "rugby": (-1, 7)}
+
+# Budget quotidien de requêtes /standings, en rotation par ancienneté sur
+# les ligues 'championnat'. Budget total par run :
+#   foot  : 31 ligues actives × 3 dates = 93  + 5 = 98/100
+#   rugby :  7 ligues × 9 dates        = 63  + 2 = 65/100
+# (l'A-League est désactivée en base — voir sql/standings.sql)
+STANDINGS_BUDGET = {"football": 5, "rugby": 2}
 
 # Mapping state.description Highlightly -> status en base (section 2)
 STATUS_MAP = {
@@ -101,7 +108,10 @@ class TeamCache:
 
 
 def sync_league(db, client, league, dates, team_cache):
+    """Synchronise une ligue sur la fenêtre de dates. Retourne la saison la
+    plus récente vue dans les réponses /matches (sert à /standings)."""
     now_iso = datetime.now(timezone.utc).isoformat()
+    saison_max = None
     for date in dates:
         try:
             api_matches = client.get_matches(league["external_id"], date)
@@ -120,6 +130,9 @@ def sync_league(db, client, league, dates, team_cache):
             "matches", {"external_id": f"in.({ext_ids})"})}
 
         for m in api_matches:
+            saison = (m.get("league") or {}).get("season")
+            if saison and (saison_max is None or saison > saison_max):
+                saison_max = saison
             state = m.get("state") or {}
             status = map_status(state.get("description") or "Not Started")
             score_home, score_away = parse_score(state, status)
@@ -148,6 +161,72 @@ def sync_league(db, client, league, dates, team_cache):
                 # Un match illisible (ex. statut hors contrainte CHECK) ne
                 # doit pas faire échouer tout le run
                 log.exception("Échec upsert match external_id=%s", m["id"])
+    return saison_max
+
+
+def sync_standings(db, client, sport, team_cache):
+    """Rafraîchit les classements officiels (endpoint /standings) pour les
+    ligues 'championnat', en rotation par ancienneté, dans la limite du
+    budget quotidien STANDINGS_BUDGET. Le remplacement des lignes se fait
+    par (league_id, season) entier : delete puis insert."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    candidates = db.select("leagues", {
+        "sport": f"eq.{sport}", "active": "is.true",
+        "category": "eq.championnat",
+        "current_season": "not.is.null",
+        "order": "standings_synced_at.asc.nullsfirst",
+        "limit": str(STANDINGS_BUDGET[sport]),
+    })
+    for league in candidates:
+        try:
+            payload = client.get_standings(league["external_id"],
+                                           league["current_season"])
+            lignes = parse_standings(payload)
+        except Exception:
+            log.exception("Échec /standings ligue=%s — on continue", league["name"])
+            continue
+        try:
+            if lignes:
+                team_cache.ensure([{"id": l["team_external_id"], "name": l["team_name"]}
+                                   for l in lignes])
+                rows = []
+                for l in lignes:
+                    team = team_cache.by_ext.get(l["team_external_id"])
+                    if not team:
+                        log.warning("Équipe %s du classement introuvable en base",
+                                    l["team_external_id"])
+                        continue
+                    rows.append({
+                        "league_id": league["id"],
+                        "season": league["current_season"],
+                        "team_id": team["id"],
+                        "group_name": l["group_name"],
+                        "position": l["position"],
+                        "points": l["points"],
+                        "games_played": l["games_played"],
+                        "wins": l["wins"],
+                        "draws": l["draws"],
+                        "losses": l["losses"],
+                        "score_for": l["score_for"],
+                        "score_against": l["score_against"],
+                        "synced_at": now_iso,
+                    })
+                db.delete("standings", {
+                    "league_id": f"eq.{league['id']}",
+                    "season": f"eq.{league['current_season']}",
+                })
+                db.insert("standings", rows)
+                log.info("Classement %s (saison %s) : %d équipes",
+                         league["name"], league["current_season"], len(rows))
+            else:
+                log.warning("Classement vide pour %s (saison %s)",
+                            league["name"], league["current_season"])
+        except Exception:
+            log.exception("Échec écriture classement ligue=%s", league["name"])
+        # Toujours dater le passage, même vide : la rotation ne doit pas
+        # rester bloquée sur une ligue sans classement disponible
+        db.update("leagues", {"standings_synced_at": now_iso},
+                  {"id": f"eq.{league['id']}"})
 
 
 def lock_started_matches(db):
@@ -241,11 +320,15 @@ def main():
 
     team_cache = TeamCache(db, sport)
     for league in leagues:
-        sync_league(db, client, league, dates, team_cache)
+        saison = sync_league(db, client, league, dates, team_cache)
+        if saison and saison != league.get("current_season"):
+            db.update("leagues", {"current_season": saison},
+                      {"id": f"eq.{league['id']}"})
 
     lock_started_matches(db)
     apply_elo_and_stats(db, sport, settings)
     generate_upcoming_odds(db, sport, settings)
+    sync_standings(db, client, sport, team_cache)
     log.info("Sync %s terminé — %d requêtes Highlightly consommées",
              sport, client.request_count)
 

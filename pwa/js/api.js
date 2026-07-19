@@ -128,6 +128,50 @@ export async function soldeEclats() {
   return rows.reduce((total, r) => total + Number(r.amount), 0);
 }
 
+export async function lireLigue(id) {
+  const rows = await rest('leagues', { id: `eq.${id}` });
+  return rows[0] || null;
+}
+
+// Classement complet d'une ligue (dernière saison synchronisée),
+// trié par groupe puis position.
+export async function classementLigue(leagueId) {
+  const rows = await rest('standings', {
+    league_id: `eq.${leagueId}`,
+    select: '*,team:teams(id,name)',
+    order: 'season.desc,group_name.asc.nullsfirst,position.asc',
+  });
+  // Ne garder que la saison la plus récente présente en base
+  const saison = rows[0]?.season;
+  return rows.filter((r) => r.season === saison);
+}
+
+// Positions d'une équipe dans tous ses championnats -> lignes standings
+// avec la ligue jointe (pour la page équipe).
+export function positionsEquipe(teamId) {
+  return rest('standings', {
+    team_id: `eq.${teamId}`,
+    select: '*,league:leagues(id,name,category)',
+    order: 'season.desc',
+  });
+}
+
+// Positions de plusieurs équipes dans une ligue donnée (page match)
+// -> Map team_id -> ligne standings.
+export async function positionsDansLigue(leagueId, teamIds) {
+  if (!teamIds.length) return new Map();
+  const rows = await rest('standings', {
+    league_id: `eq.${leagueId}`,
+    team_id: `in.(${teamIds.join(',')})`,
+    order: 'season.desc',
+  });
+  const parEquipe = new Map();
+  for (const row of rows) {
+    if (!parEquipe.has(row.team_id)) parEquipe.set(row.team_id, row);
+  }
+  return parEquipe;
+}
+
 export async function lireReglages() {
   const rows = await rest('model_settings', { id: 'eq.default' });
   return rows[0] || null;

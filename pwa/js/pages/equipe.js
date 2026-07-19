@@ -2,24 +2,26 @@
 // compétition (dépliables), derniers matchs, prochains matchs.
 
 import {
-  lireEquipe, lireReglages, matchsEquipe, statsGlobales, statsParCompetition,
+  lireEquipe, lireReglages, matchsEquipe, positionsEquipe, statsGlobales,
+  statsParCompetition,
 } from '../api.js';
 import {
-  badgesForme, brut, chargement, dateHeure, echapper, erreur,
-  formeDepuisMatchs, nombre,
+  badgesForme, chargement, dateHeure, echapper, erreur, formeDepuisMatchs,
+  lienClassementExterne, nombre, ordinal,
 } from '../ui.js';
 
 export async function pageEquipe(conteneur, teamId) {
   conteneur.innerHTML = chargement();
   try {
-    const [equipe, globales, parCompetition, reglages, derniers, prochains] =
-      await Promise.all([
+    const [equipe, globales, parCompetition, reglages, derniers, prochains,
+           positions] = await Promise.all([
         lireEquipe(teamId),
         statsGlobales(teamId),
         statsParCompetition(teamId),
         lireReglages(),
         matchsEquipe(teamId, { statut: 'finished', limite: 15 }),
         matchsEquipe(teamId, { statut: 'scheduled', limite: 10 }),
+        positionsEquipe(teamId),
       ]);
     if (!equipe) {
       conteneur.innerHTML = '<p class="erreur">Équipe introuvable.</p>';
@@ -29,12 +31,23 @@ export async function pageEquipe(conteneur, teamId) {
     const formeGlobale = formeDepuisMatchs(
       derniers.filter((m) => m.score_home !== null), teamId, fenetre);
 
+    // Position par championnat (saison la plus récente par ligue)
+    const posParLigue = new Map();
+    for (const p of positions) {
+      if (!posParLigue.has(p.league_id)) posParLigue.set(p.league_id, p);
+    }
+    const lignesClassement = [...posParLigue.values()].map((p) => `
+      <a class="lien-classement" href="#/classement/${p.league_id}">
+        ${echapper(p.league?.name)} : ${echapper(ordinal(p.position))}
+        (${nombre(p.points)} pts)</a>`).join(' · ');
+
     conteneur.innerHTML = `
       <header class="entete-page">
         <h1>${echapper(equipe.name)}</h1>
         <p class="muet">${equipe.sport === 'rugby' ? '🏉 Rugby' : '⚽ Football'}
           · Rating Elo <strong>${nombre(equipe.rating, 1)}</strong>
           · ${nombre(equipe.matches_played)} matchs pris en compte</p>
+        ${lignesClassement ? `<p>🏆 ${lignesClassement}</p>` : ''}
       </header>
 
       <section class="carte">
@@ -56,7 +69,7 @@ export async function pageEquipe(conteneur, teamId) {
         <h2>Par compétition</h2>
         ${parCompetition.length === 0
           ? '<p class="muet">Aucune compétition disputée.</p>'
-          : parCompetition.map(carteCompetition).join('')}
+          : parCompetition.map((s) => carteCompetition(s, posParLigue)).join('')}
       </section>
 
       <section>
@@ -75,7 +88,18 @@ export async function pageEquipe(conteneur, teamId) {
   }
 }
 
-function carteCompetition(s) {
+function carteCompetition(s, posParLigue) {
+  const rang = posParLigue.get(s.league_id);
+  let ligneRang = '';
+  if (rang) {
+    ligneRang = `<p><a class="lien-classement" href="#/classement/${s.league_id}">
+      🏆 ${echapper(ordinal(rang.position))} du classement (${nombre(rang.points)} pts)
+      — voir le tableau complet</a></p>`;
+  } else if (s.league?.category === 'championnat') {
+    // Championnat sans classement encore synchronisé : lien de secours
+    ligneRang = `<p><a class="lien-classement" href="${lienClassementExterne(s.league)}"
+      target="_blank" rel="noopener">🔗 Classement officiel (recherche externe)</a></p>`;
+  }
   return `
     <details class="carte">
       <summary>
@@ -84,6 +108,7 @@ function carteCompetition(s) {
           ${nombre(s.wins)}V ${nombre(s.draws)}N ${nombre(s.losses)}D
           ${s.current_streak ? `· série ${echapper(s.current_streak)}` : ''}</span>
       </summary>
+      ${ligneRang}
       <div class="tableau-camps">
         <div>
           <h3>Total</h3>
