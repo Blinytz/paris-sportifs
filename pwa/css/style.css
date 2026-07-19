@@ -1,0 +1,157 @@
+/* Paris Sportifs ✦ — thème sombre simple, mobile d'abord */
+
+:root {
+  --fond: #101418;
+  --fond-carte: #1a2028;
+  --fond-carte-survol: #222a34;
+  --bordure: #2c3540;
+  --texte: #e8edf2;
+  --texte-muet: #8a97a5;
+  --accent: #f5b942;
+  --accent-fonce: #b8860b;
+  --vert: #3dbf6e;
+  --rouge: #e05252;
+  --gris: #7a8794;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--fond);
+  color: var(--texte);
+  line-height: 1.5;
+}
+
+a { color: inherit; text-decoration: none; }
+h1 { font-size: 1.4rem; margin: 0.5rem 0; }
+h2 { font-size: 1.05rem; margin: 1.2rem 0 0.5rem; color: var(--accent); }
+h3 { font-size: 0.9rem; margin: 0.3rem 0; }
+
+#entete {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0.6rem 1rem;
+  background: var(--fond-carte);
+  border-bottom: 1px solid var(--bordure);
+}
+.logo { font-weight: 700; white-space: nowrap; }
+#entete nav { display: flex; gap: 0.8rem; flex: 1; }
+#entete nav a { color: var(--texte-muet); padding: 0.2rem 0.4rem; border-radius: 6px; }
+#entete nav a.actif, #entete nav a:hover { color: var(--texte); background: var(--fond-carte-survol); }
+.entete-droite { display: flex; align-items: center; gap: 0.5rem; }
+
+main { max-width: 720px; margin: 0 auto; padding: 1rem; }
+
+.carte {
+  display: block;
+  background: var(--fond-carte);
+  border: 1px solid var(--bordure);
+  border-radius: 10px;
+  padding: 0.8rem 1rem;
+  margin: 0.6rem 0;
+}
+a.carte:hover, a.carte:focus { background: var(--fond-carte-survol); }
+
+.muet { color: var(--texte-muet); font-size: 0.85rem; }
+.erreur { color: var(--rouge); }
+.gras { font-weight: 700; }
+.score { font-weight: 700; color: var(--accent); }
+
+.pastille {
+  background: var(--fond-carte-survol);
+  border: 1px solid var(--bordure);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.pastille-won { color: var(--vert); border-color: var(--vert); }
+.pastille-lost { color: var(--rouge); border-color: var(--rouge); }
+.pastille-void { color: var(--gris); }
+.pastille-pending { color: var(--accent); border-color: var(--accent); }
+
+/* Cartes match */
+.carte-match-entete { display: flex; justify-content: space-between; gap: 0.5rem; }
+.carte-match-equipes {
+  display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: center; gap: 0.5rem; margin: 0.3rem 0;
+}
+.carte-match-equipes span:first-child { text-align: right; }
+.carte-match-cotes { display: flex; gap: 1rem; justify-content: center; color: var(--accent); font-size: 0.9rem; }
+.carte-pari-detail { font-size: 0.85rem; color: var(--texte-muet); }
+.jour { font-size: 0.9rem; color: var(--texte-muet); text-transform: capitalize; margin: 1.2rem 0 0.3rem; }
+
+/* Formes V/N/D */
+.forme {
+  display: inline-block; width: 1.4rem; height: 1.4rem; line-height: 1.4rem;
+  text-align: center; border-radius: 50%; font-size: 0.75rem; font-weight: 700;
+  margin-right: 0.2rem;
+}
+.forme-V { background: var(--vert); color: #08210f; }
+.forme-N { background: var(--gris); color: #10161c; }
+.forme-D { background: var(--rouge); color: #2a0d0d; }
+
+/* Page match */
+.entete-page { text-align: center; margin-bottom: 1rem; }
+.affiche { display: flex; justify-content: center; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
+.affiche a:hover { color: var(--accent); }
+.comparatif { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.colonne-equipe { min-width: 0; }
+.tableau-camps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin: 0.5rem 0; }
+.tableau-camps p { margin: 0.1rem 0; }
+
+/* Pari */
+.rangee-cotes { display: flex; gap: 0.6rem; margin-bottom: 0.8rem; }
+.choix-cote { flex: 1; }
+.choix-cote input { position: absolute; opacity: 0; }
+.choix-cote span {
+  display: block; text-align: center; padding: 0.5rem;
+  border: 1px solid var(--bordure); border-radius: 8px; cursor: pointer;
+}
+.choix-cote input:checked + span {
+  border-color: var(--accent); background: var(--fond-carte-survol);
+  color: var(--accent);
+}
+.rangee-mise { display: flex; gap: 0.6rem; align-items: end; }
+.rangee-mise label { flex: 1; display: flex; flex-direction: column; gap: 0.2rem; }
+
+/* Formulaires */
+input, select, button {
+  font: inherit; color: var(--texte);
+  background: var(--fond); border: 1px solid var(--bordure);
+  border-radius: 8px; padding: 0.45rem 0.7rem;
+}
+button {
+  background: var(--accent); color: #201500; font-weight: 700;
+  cursor: pointer; border-color: var(--accent-fonce);
+}
+button:hover { filter: brightness(1.1); }
+button.secondaire { background: var(--fond-carte-survol); color: var(--texte); border-color: var(--bordure); }
+label { display: block; margin: 0.5rem 0; }
+label input { width: 100%; margin-top: 0.2rem; }
+.filtres { display: flex; gap: 0.6rem; }
+.filtres select { flex: 1; min-width: 0; }
+.rangee-boutons { display: flex; gap: 0.6rem; margin-top: 1rem; }
+
+/* Réglages */
+.champ-reglage input { max-width: 10rem; }
+.aide { margin: 0.4rem 0 0; }
+
+/* Connexion */
+#connexion { display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 1rem; }
+#connexion[hidden] { display: none; }
+#connexion .carte { width: 100%; max-width: 22rem; }
+#connexion h1 { text-align: center; }
+#connexion button { width: 100%; margin-top: 0.8rem; }
+
+details.carte summary { cursor: pointer; display: flex; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; }
+
+.statut-void { opacity: 0.7; }
+
+@media (max-width: 480px) {
+  #entete { flex-wrap: wrap; padding: 0.5rem 0.7rem; }
+  #entete nav { order: 3; width: 100%; justify-content: space-around; }
+  .comparatif { grid-template-columns: 1fr; }
+}
