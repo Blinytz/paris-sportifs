@@ -1,0 +1,33 @@
+# Déploie le dossier pwa/ sur GitHub Pages à chaque push sur main.
+# (Pages ne sert nativement que la racine ou /docs — ce workflow permet
+# de garder la PWA dans pwa/ ; la source Pages du repo doit être réglée
+# sur "GitHub Actions".)
+name: deploy-pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: pwa
+      - id: deployment
+        uses: actions/deploy-pages@v4
