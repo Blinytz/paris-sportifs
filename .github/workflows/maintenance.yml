@@ -1,0 +1,20 @@
+# Tâches de maintenance à la demande (aucune requête Highlightly).
+# reset-sync : remet le sync en mode bootstrap (voir scripts/reset_sync.py).
+name: maintenance
+
+on:
+  workflow_dispatch:
+
+jobs:
+  reset-sync:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - run: python scripts/reset_sync.py

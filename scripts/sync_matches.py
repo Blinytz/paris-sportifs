@@ -55,17 +55,27 @@ QUOTA_RESERVE = 1
 PRIORITE_CATEGORIE = {"championnat": 0, "coupe_continentale": 1,
                       "coupe_nationale": 2, "international": 3}
 
-# Mapping state.description Highlightly -> status en base (section 2)
+# Mapping state.description Highlightly -> status en base. Clés en
+# minuscules : l'API réelle renvoie « Not started » là où la spec disait
+# « Not Started » (constaté au premier run du 20/07/2026).
 STATUS_MAP = {
-    "Not Started": "scheduled",
-    "Live": "live",
-    "1st Half": "live",
-    "2nd Half": "live",
-    "Half Time": "live",
-    "Finished": "finished",
-    "Postponed": "postponed",
-    "Cancelled": "cancelled",
-    "Abandoned": "cancelled",
+    "not started": "scheduled",
+    "live": "live",
+    "1st half": "live",
+    "first half": "live",
+    "2nd half": "live",
+    "second half": "live",
+    "half time": "live",
+    "halftime": "live",
+    "extra time": "live",
+    "penalties": "live",
+    "finished": "finished",
+    "finished after extra time": "finished",
+    "finished after penalties": "finished",
+    "postponed": "postponed",
+    "cancelled": "cancelled",
+    "canceled": "cancelled",
+    "abandoned": "cancelled",
 }
 
 
@@ -98,8 +108,9 @@ def dates_pour_ligue(db, league, sport):
 
 
 def map_status(raw):
-    if raw in STATUS_MAP:
-        return STATUS_MAP[raw]
+    cle = (raw or "").strip().lower()
+    if cle in STATUS_MAP:
+        return STATUS_MAP[cle]
     # Valeur inconnue : stockée telle quelle sans planter (section 2). La
     # contrainte CHECK de la base peut la refuser — géré par l'appelant.
     log.warning("Statut Highlightly inconnu : %r (stocké tel quel)", raw)
@@ -107,15 +118,19 @@ def map_status(raw):
 
 
 def parse_score(state, status):
-    """state.score = "2 - 1" (home - away), présent quand finished."""
+    """Score final quand finished. La spec annonçait une string "2 - 1" ;
+    l'API réelle renvoie un objet {"current": "2 - 1", "penalties": ...}
+    (constaté au premier run du 20/07/2026) : on gère les deux formes."""
     if status != "finished":
         return None, None
     raw = (state or {}).get("score")
+    if isinstance(raw, dict):
+        raw = raw.get("current")
     try:
         home, away = raw.split(" - ")
         return int(home.strip()), int(away.strip())
     except (AttributeError, ValueError):
-        log.warning("Score illisible : %r — scores laissés à null", raw)
+        log.warning("Score illisible : %r ; scores laissés à null", raw)
         return None, None
 
 
