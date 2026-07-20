@@ -12,6 +12,8 @@ const AIDE_TERRAIN = "Bonus fictif donné à l'équipe qui reçoit avant de calc
 const AIDE_MARGE = "Réduit légèrement chaque cote par rapport à la probabilité pure calculée. 1.00 : aucune marge, système parfaitement équilibré sur le long terme. 1.05 (défaut) : léger avantage maison. 1.10-1.15 : marge plus agressive, cotes moins généreuses. Une valeur sous 1.00 avantage volontairement les paris.";
 const AIDE_BORNES = "Empêchent les cotes extrêmes. Baisser le minimum autorise des cotes quasi nulles sur un favori écrasant. Monter le maximum autorise des cotes très élevées sur un outsider extrême — plus excitant en cas d'exploit, utile aussi en tout début quand les ratings sont encore mal calibrés.";
 const AIDE_NUL = "Contrôle l'estimation du nul en foot selon l'écart de niveau entre les équipes. Base plus haute : le nul est jugé plus probable dans l'absolu. Diviseur plus petit : la probabilité de nul chute plus vite dès qu'un écart de niveau apparaît. Diviseur plus grand : le nul reste probable même avec un écart important.";
+const AIDE_NUL_RUGBY = "Le nul est pariable au rugby aussi, mais il est rare : ces bornes maintiennent sa probabilité basse, donc sa cote haute (plafonnée par la cote maximale). Monter la base rend le nul rugby moins rémunérateur ; la baisser le rend quasi injouable.";
+const AIDE_BONUS = "Multiplicateurs du pari sur score. Bonne issue seule : gain = mise × cote. Bon écart signé en plus (ex. 1-0 pronostiqué, 2-1 réel) : gain × bonus écart. Score exact : gain × bonus score exact. Un pronostic de nul gagnant a d'office le bon écart (0).";
 const AIDE_FORME = "Nombre de matchs pris en compte pour calculer \"la forme actuelle\" d'une équipe. Petite fenêtre (3) : très réactive mais bruitée. Grande fenêtre (10) : tendance lissée mais plus lente à refléter un vrai changement.";
 
 // Valeurs par défaut de la section 6 de la spec (bouton réinitialiser)
@@ -26,6 +28,11 @@ export const CHAMPS = [
   { cle: 'draw_min_prob', libelle: 'Probabilité de nul — plancher', defaut: 0.15, pas: 0.01, aide: AIDE_NUL },
   { cle: 'draw_max_prob', libelle: 'Probabilité de nul — plafond', defaut: 0.30, pas: 0.01, aide: AIDE_NUL },
   { cle: 'draw_gap_divisor', libelle: "Probabilité de nul — diviseur d'écart", defaut: 4000, pas: 100, aide: AIDE_NUL },
+  { cle: 'draw_base_prob_rugby', libelle: 'Nul rugby — base', defaut: 0.04, pas: 0.01, aide: AIDE_NUL_RUGBY },
+  { cle: 'draw_min_prob_rugby', libelle: 'Nul rugby — plancher', defaut: 0.02, pas: 0.01, aide: AIDE_NUL_RUGBY },
+  { cle: 'draw_max_prob_rugby', libelle: 'Nul rugby — plafond', defaut: 0.05, pas: 0.01, aide: AIDE_NUL_RUGBY },
+  { cle: 'bonus_ecart', libelle: 'Bonus bon écart', defaut: 1.5, pas: 0.1, aide: AIDE_BONUS },
+  { cle: 'bonus_score_exact', libelle: 'Bonus score exact', defaut: 2.0, pas: 0.1, aide: AIDE_BONUS },
   { cle: 'form_window_size', libelle: 'Fenêtre de forme récente', defaut: 5, pas: 1, aide: AIDE_FORME },
 ];
 

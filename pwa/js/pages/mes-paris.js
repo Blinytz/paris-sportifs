@@ -18,7 +18,7 @@ export async function pageMesParis(conteneur) {
     }
     const mises = paris.reduce((s, p) => s + Number(p.stake_eclats), 0);
     const gains = paris.filter((p) => p.status === 'won')
-      .reduce((s, p) => s + Number(p.potential_payout), 0);
+      .reduce((s, p) => s + Number(p.potential_payout) * (Number(p.bonus_multiplier) || 1), 0);
     const rembourses = paris.filter((p) => p.status === 'void')
       .reduce((s, p) => s + Number(p.stake_eclats), 0);
     conteneur.innerHTML = `
@@ -46,9 +46,13 @@ function cartePari(p) {
         <span>${echapper(m?.away?.name)}</span>
       </div>
       <div class="carte-pari-detail">
-        ${echapper(SELECTIONS[p.selection] || p.selection)} ·
+        Pronostic <strong>${echapper(p.predicted_home)}–${echapper(p.predicted_away)}</strong>
+        (${echapper(SELECTIONS[p.selection] || p.selection)}) ·
         mise ${nombre(p.stake_eclats)} ✦ · cote ${nombre(p.odds_at_bet, 2)} ·
-        gain potentiel ${nombre(p.potential_payout, 2)} ✦
+        ${p.status === 'won'
+          ? `gain ${nombre(p.potential_payout * (p.bonus_multiplier || 1), 2)} ✦${
+              p.bonus_multiplier > 1 ? ` (bonus ×${nombre(p.bonus_multiplier, 1)})` : ''}`
+          : `gain de base ${nombre(p.potential_payout, 2)} ✦ (jusqu'à ×2 si score exact)`}
       </div>
     </a>`;
 }

@@ -67,15 +67,24 @@ create table odds_generated (
 
 create index idx_odds_match on odds_generated (match_id);
 
+-- Pari sur le SCORE exact (décision du 20/07/2026, remplace le 1x2 simple) :
+-- l'issue (selection) est dérivée du pronostic. Règlement à 3 niveaux :
+--   bonne issue           -> gain = potential_payout (mise × cote de l'issue)
+--   + bon écart signé     -> gain × bonus_ecart   (model_settings, déf. 1.5)
+--   + score exact         -> gain × bonus_score_exact (model_settings, déf. 2)
+-- bonus_multiplier est rempli au règlement (1 / 1.5 / 2 selon le cas).
 create table bets (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id),
   match_id uuid not null references matches(id),
-  market text not null default '1x2',
+  market text not null default 'score',
+  predicted_home integer not null check (predicted_home between 0 and 199),
+  predicted_away integer not null check (predicted_away between 0 and 199),
   selection text not null check (selection in ('home', 'draw', 'away')),
   stake_eclats numeric not null check (stake_eclats > 0),
   odds_at_bet numeric not null,
   potential_payout numeric not null,
+  bonus_multiplier numeric,
   status text not null default 'pending' check (status in (
     'pending', 'won', 'lost', 'void'
   )),
@@ -144,6 +153,13 @@ create table model_settings (
   draw_min_prob numeric not null default 0.15,
   draw_max_prob numeric not null default 0.30,
   draw_gap_divisor numeric not null default 4000,
+  -- Nul au rugby : pariable aussi (marché 3 voies), probabilité faible
+  draw_base_prob_rugby numeric not null default 0.04,
+  draw_min_prob_rugby numeric not null default 0.02,
+  draw_max_prob_rugby numeric not null default 0.05,
+  -- Bonus du pari sur score : bon écart signé / score exact
+  bonus_ecart numeric not null default 1.5,
+  bonus_score_exact numeric not null default 2.0,
   form_window_size integer not null default 5,
   updated_at timestamptz not null default now()
 );
@@ -255,22 +271,27 @@ insert into leagues (sport, category, external_id, name, country) values
 ('rugby', 'international', 59503, 'World Cup', 'World');
 
 -- ============================================================
--- RPC place_bet — placement de pari atomique (règle 8, section 4)
+-- RPC place_bet — placement de pari sur SCORE, atomique (règle 8)
 --
 -- Pourquoi une fonction et pas des insert côté client :
 -- la RLS interdit toute écriture client sur eclats_ledger (anti-triche),
--- mais la règle 8 exige que le débit de la mise soit créé atomiquement
--- avec la ligne de pari. Cette fonction SECURITY DEFINER est donc le
--- seul chemin d'écriture autorisé pour placer un pari : elle vérifie
--- tout côté serveur (match ouvert, cote courante, solde) puis crée
--- bets + eclats_ledger dans la même transaction.
+-- mais le débit de la mise doit être créé atomiquement avec la ligne de
+-- pari. Cette fonction SECURITY DEFINER est donc le seul chemin d'écriture
+-- autorisé pour placer un pari : elle vérifie tout côté serveur (match
+-- ouvert, cote courante, solde) puis crée bets + eclats_ledger dans la
+-- même transaction.
+--
+-- Le pari porte sur un score exact (p_home / p_away). L'issue (home/draw/
+-- away) en est dérivée ; la cote appliquée est celle de cette issue. Le
+-- nul est pariable au rugby comme au foot (marché 3 voies partout).
 --
 -- À exécuter APRÈS schema.sql.
 -- ============================================================
 
 create or replace function place_bet(
   p_match_id uuid,
-  p_selection text,
+  p_home integer,
+  p_away integer,
   p_stake numeric
 ) returns uuid
 language plpgsql
@@ -281,7 +302,7 @@ declare
   v_user uuid := auth.uid();
   v_match matches%rowtype;
   v_odds odds_generated%rowtype;
-  v_sport text;
+  v_selection text;
   v_odd numeric;
   v_balance numeric;
   v_bet_id uuid;
@@ -292,8 +313,9 @@ begin
   if p_stake is null or p_stake <= 0 then
     raise exception 'Mise invalide';
   end if;
-  if p_selection not in ('home', 'draw', 'away') then
-    raise exception 'Sélection invalide';
+  if p_home is null or p_away is null
+     or p_home not between 0 and 199 or p_away not between 0 and 199 then
+    raise exception 'Score pronostiqué invalide';
   end if;
 
   -- Sérialise les paris d'un même utilisateur (évite deux paris simultanés
@@ -309,10 +331,11 @@ begin
     raise exception 'Paris fermés sur ce match';
   end if;
 
-  select l.sport into v_sport from leagues l where l.id = v_match.league_id;
-  if v_sport = 'rugby' and p_selection = 'draw' then
-    raise exception 'Marché 2 voies en rugby : pas de pari sur le nul';
-  end if;
+  v_selection := case
+    when p_home > p_away then 'home'
+    when p_home < p_away then 'away'
+    else 'draw'
+  end;
 
   -- Cote courante = la plus récente générée pour ce match (prise côté
   -- serveur, jamais fournie par le client)
@@ -324,13 +347,13 @@ begin
   if not found then
     raise exception 'Aucune cote disponible pour ce match';
   end if;
-  v_odd := case p_selection
+  v_odd := case v_selection
     when 'home' then v_odds.home_odds
     when 'draw' then v_odds.draw_odds
     else v_odds.away_odds
   end;
   if v_odd is null then
-    raise exception 'Cote indisponible pour cette sélection';
+    raise exception 'Cote indisponible pour cette issue';
   end if;
 
   -- Règle 8 : solde = somme de toutes les entrées ledger, toutes sources
@@ -340,8 +363,10 @@ begin
     raise exception 'Solde insuffisant : % Éclats disponibles', v_balance;
   end if;
 
-  insert into bets (user_id, match_id, selection, stake_eclats, odds_at_bet, potential_payout)
-  values (v_user, p_match_id, p_selection, p_stake, v_odd, round(p_stake * v_odd, 2))
+  insert into bets (user_id, match_id, predicted_home, predicted_away,
+                    selection, stake_eclats, odds_at_bet, potential_payout)
+  values (v_user, p_match_id, p_home, p_away,
+          v_selection, p_stake, v_odd, round(p_stake * v_odd, 2))
   returning id into v_bet_id;
 
   insert into eclats_ledger (user_id, amount, source, reference_id)
@@ -351,8 +376,8 @@ begin
 end
 $$;
 
-revoke all on function place_bet(uuid, text, numeric) from public, anon;
-grant execute on function place_bet(uuid, text, numeric) to authenticated;
+revoke all on function place_bet(uuid, integer, integer, numeric) from public, anon;
+grant execute on function place_bet(uuid, integer, integer, numeric) to authenticated;
 
 -- ============================================================
 -- Classements officiels (endpoint /standings de Highlightly)

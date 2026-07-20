@@ -114,10 +114,11 @@ export function mesParisSurMatch(matchId) {
 }
 
 // Règle 8 : le placement passe par la fonction SQL place_bet (atomique,
-// vérifie solde + verrouillage côté serveur).
-export function placerPari(matchId, selection, mise) {
+// vérifie solde + verrouillage côté serveur). On parie un SCORE ; l'issue
+// et la cote appliquée sont dérivées côté serveur.
+export function placerPari(matchId, home, away, mise) {
   return rpc('place_bet', {
-    p_match_id: matchId, p_selection: selection, p_stake: mise,
+    p_match_id: matchId, p_home: home, p_away: away, p_stake: mise,
   });
 }
 

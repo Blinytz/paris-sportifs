@@ -29,7 +29,11 @@ def update_elo(rating_home, rating_away, result, sport, settings):
 
 
 def generate_odds(rating_home, rating_away, sport, settings):
-    """Retourne {"home": cote, "draw": cote_ou_None, "away": cote}."""
+    """Retourne {"home": cote, "draw": cote, "away": cote}.
+
+    Marché 3 voies pour les deux sports : le nul est pariable au rugby
+    aussi (probabilité faible — paramètres *_rugby de model_settings —
+    donc cote élevée, plafonnée par odds_max)."""
     margin = float(settings["margin_factor"])
     odds_max = float(settings["odds_max"])
     advantage = _advantage(sport, settings)
@@ -39,17 +43,20 @@ def generate_odds(rating_home, rating_away, sport, settings):
         return _clamp_odds(1 / (p * margin), settings) if p > 0 else odds_max
 
     if sport == "football":
-        gap = abs(rating_home - rating_away)
-        p_draw = max(float(settings["draw_min_prob"]),
-                     min(float(settings["draw_max_prob"]),
-                         float(settings["draw_base_prob"]) - gap / float(settings["draw_gap_divisor"])))
-        remaining = 1 - p_draw
-        p_home = p_home_raw * remaining
-        p_away = remaining - p_home
-        return {"home": cote(p_home), "draw": cote(p_draw), "away": cote(p_away)}
-
-    # rugby : marché 2 voies
-    return {"home": cote(p_home_raw), "draw": None, "away": cote(1 - p_home_raw)}
+        base, borne_min, borne_max = (float(settings["draw_base_prob"]),
+                                      float(settings["draw_min_prob"]),
+                                      float(settings["draw_max_prob"]))
+    else:
+        base, borne_min, borne_max = (float(settings["draw_base_prob_rugby"]),
+                                      float(settings["draw_min_prob_rugby"]),
+                                      float(settings["draw_max_prob_rugby"]))
+    gap = abs(rating_home - rating_away)
+    p_draw = max(borne_min,
+                 min(borne_max, base - gap / float(settings["draw_gap_divisor"])))
+    remaining = 1 - p_draw
+    p_home = p_home_raw * remaining
+    p_away = remaining - p_home
+    return {"home": cote(p_home), "draw": cote(p_draw), "away": cote(p_away)}
 
 
 def _clamp_odds(value, settings):
@@ -67,13 +74,21 @@ if __name__ == "__main__":
         "margin_factor": 1.0,  # marge neutralisée pour comparer "avant marge"
         "odds_min": 1.05, "odds_max": 15.00,
         "draw_base_prob": 0.28, "draw_min_prob": 0.15, "draw_max_prob": 0.30,
+        "draw_base_prob_rugby": 0.04, "draw_min_prob_rugby": 0.02,
+        "draw_max_prob_rugby": 0.05,
         "draw_gap_divisor": 4000, "form_window_size": 5,
+        "bonus_ecart": 1.5, "bonus_score_exact": 2.0,
     }
     odds = generate_odds(1500, 1500, "football", defaults)
     assert abs(odds["home"] - 2.36) < 0.05, odds
     assert abs(odds["draw"] - 3.57) < 0.05, odds
     assert abs(odds["away"] - 3.37) < 0.05, odds
 
+    # Rugby : marché 3 voies, nul rare -> cote plafonnée à odds_max
+    odds_rugby = generate_odds(1500, 1500, "rugby", defaults)
+    assert odds_rugby["draw"] == 15.00, odds_rugby
+    assert odds_rugby["home"] < odds_rugby["away"], odds_rugby  # avantage terrain
+
     nh, na = update_elo(1500, 1500, 1.0, "football", defaults)
     assert nh > 1500 > na and nh - 1500 < 32, (nh, na)
-    print("elo.py : tous les tests passent", odds, (nh, na))
+    print("elo.py : tous les tests passent", odds, odds_rugby, (nh, na))

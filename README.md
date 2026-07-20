@@ -46,6 +46,28 @@ pwa/                     # la PWA (routes en hash : #/match/{id}, #/equipe/{id}�
 5. Lancer un premier run à la main : onglet Actions → `sync-football` →
    *Run workflow* (idem rugby). Ensuite le cron tourne seul à 6h UTC.
 
+## Système de pari : sur le score (remplace le 1x2 de la spec, 20/07/2026)
+
+On parie un **score exact** (ex. 2-1), pas une simple issue. Au règlement :
+
+| Résultat du pronostic | Gain |
+|---|---|
+| Mauvaise issue (vainqueur/nul raté) | Perdu (mise débitée au pari) |
+| Bonne issue | mise × cote de l'issue |
+| + bon **écart signé** (ex. 1-0 pronostiqué, 2-1 réel : +1 = +1) | gain × **1,5** (`bonus_ecart`) |
+| + **score exact** | gain × **2** (`bonus_score_exact`) |
+
+Précisions :
+- L'écart est **signé** : 1-0 pronostiqué (+1) avec un 1-2 réel (−1), c'est
+  perdu — l'issue est fausse.
+- Le **nul est pariable au rugby** comme au foot (marché 3 voies partout).
+  Sa probabilité rugby est basse (paramètres `*_rugby` des réglages), donc
+  sa cote est haute (plafonnée par la cote maximale). Un pronostic de nul
+  gagnant a d'office le bon écart (0) → au moins ×1,5. L'ancienne règle
+  « nul rugby = remboursement » est supprimée.
+- Les bonus sont réglables dans la page Réglages (lus à chaque run,
+  règle 10). `python scripts/settle_bets.py --test` vérifie la grille.
+
 ## Quota API (spec section 5, amendée le 20/07/2026 pour les classements)
 
 - Foot : 31 ligues actives × 3 dates (J-1 à J+1) = 93 + 5 classements

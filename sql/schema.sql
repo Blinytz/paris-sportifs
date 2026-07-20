@@ -60,15 +60,24 @@ create table odds_generated (
 
 create index idx_odds_match on odds_generated (match_id);
 
+-- Pari sur le SCORE exact (décision du 20/07/2026, remplace le 1x2 simple) :
+-- l'issue (selection) est dérivée du pronostic. Règlement à 3 niveaux :
+--   bonne issue           -> gain = potential_payout (mise × cote de l'issue)
+--   + bon écart signé     -> gain × bonus_ecart   (model_settings, déf. 1.5)
+--   + score exact         -> gain × bonus_score_exact (model_settings, déf. 2)
+-- bonus_multiplier est rempli au règlement (1 / 1.5 / 2 selon le cas).
 create table bets (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id),
   match_id uuid not null references matches(id),
-  market text not null default '1x2',
+  market text not null default 'score',
+  predicted_home integer not null check (predicted_home between 0 and 199),
+  predicted_away integer not null check (predicted_away between 0 and 199),
   selection text not null check (selection in ('home', 'draw', 'away')),
   stake_eclats numeric not null check (stake_eclats > 0),
   odds_at_bet numeric not null,
   potential_payout numeric not null,
+  bonus_multiplier numeric,
   status text not null default 'pending' check (status in (
     'pending', 'won', 'lost', 'void'
   )),
@@ -137,6 +146,13 @@ create table model_settings (
   draw_min_prob numeric not null default 0.15,
   draw_max_prob numeric not null default 0.30,
   draw_gap_divisor numeric not null default 4000,
+  -- Nul au rugby : pariable aussi (marché 3 voies), probabilité faible
+  draw_base_prob_rugby numeric not null default 0.04,
+  draw_min_prob_rugby numeric not null default 0.02,
+  draw_max_prob_rugby numeric not null default 0.05,
+  -- Bonus du pari sur score : bon écart signé / score exact
+  bonus_ecart numeric not null default 1.5,
+  bonus_score_exact numeric not null default 2.0,
   form_window_size integer not null default 5,
   updated_at timestamptz not null default now()
 );

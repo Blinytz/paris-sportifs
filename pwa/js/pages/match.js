@@ -55,20 +55,22 @@ function entete(match, sousTitre) {
 // ---------- Match à venir (7.2) ----------
 
 async function renduAVenir(conteneur, match) {
-  const cotes = (await dernieresCotes([match.id])).get(match.id);
-  const sport = match.league?.sport;
+  const [cotesParMatch, reglages] = await Promise.all([
+    dernieresCotes([match.id]), lireReglages(),
+  ]);
+  const cotes = cotesParMatch.get(match.id);
 
   conteneur.innerHTML = `
     ${entete(match, 'vs')}
     <section class="carte" id="zone-pari">
-      <h2>Parier</h2>
-      ${cotes ? formulairePari(match, cotes, sport)
+      <h2>Parier sur le score</h2>
+      ${cotes ? formulairePari(match, cotes)
               : '<p class="muet">Cotes pas encore générées (prochain run de sync).</p>'}
     </section>
     <section id="zone-comparatif">${chargement()}</section>
     <section id="zone-h2h">${chargement()}</section>`;
 
-  if (cotes) brancherPari(conteneur, match);
+  if (cotes) brancherPari(conteneur, match, cotes, reglages);
 
   const [comparatif, h2h] = await Promise.all([
     blocComparatif(match, cotes, null),
@@ -79,44 +81,76 @@ async function renduAVenir(conteneur, match) {
   brancherVoirPlus(conteneur);
 }
 
-function formulairePari(match, cotes, sport) {
-  const bouton = (selection, cote) => cote == null ? '' : `
-    <label class="choix-cote">
-      <input type="radio" name="selection" value="${selection}">
-      <span>${echapper(SELECTIONS[selection])}<br><strong>${nombre(cote, 2)}</strong></span>
-    </label>`;
+function formulairePari(match, cotes) {
   return `
     <form id="formulaire-pari">
-      <div class="rangee-cotes">
-        ${bouton('home', cotes.home_odds)}
-        ${sport === 'football' ? bouton('draw', cotes.draw_odds) : ''}
-        ${bouton('away', cotes.away_odds)}
+      <div class="rangee-cotes info-cotes">
+        <span>1 · ${nombre(cotes.home_odds, 2)}</span>
+        ${cotes.draw_odds ? `<span>N · ${nombre(cotes.draw_odds, 2)}</span>` : ''}
+        <span>2 · ${nombre(cotes.away_odds, 2)}</span>
+      </div>
+      <div class="rangee-score">
+        <label>${echapper(match.home?.name)}
+          <input type="number" name="ph" min="0" max="199" step="1" inputmode="numeric" required></label>
+        <span class="tiret">–</span>
+        <label>${echapper(match.away?.name)}
+          <input type="number" name="pa" min="0" max="199" step="1" inputmode="numeric" required></label>
       </div>
       <div class="rangee-mise">
         <label>Mise <input type="number" name="mise" min="1" step="1" placeholder="Éclats" required></label>
         <button type="submit">Placer le pari</button>
       </div>
+      <p id="apercu-pari" class="muet"></p>
       <p id="retour-pari" class="muet"></p>
     </form>`;
 }
 
-function brancherPari(conteneur, match) {
+function brancherPari(conteneur, match, cotes, reglages) {
   const formulaire = conteneur.querySelector('#formulaire-pari');
   const retour = conteneur.querySelector('#retour-pari');
+  const apercu = conteneur.querySelector('#apercu-pari');
+  const bonusEcart = Number(reglages?.bonus_ecart) || 1.5;
+  const bonusExact = Number(reglages?.bonus_score_exact) || 2;
+
+  const lireChamps = () => {
+    const d = new FormData(formulaire);
+    const ph = d.get('ph'), pa = d.get('pa');
+    return {
+      ph: ph === '' ? null : Number(ph),
+      pa: pa === '' ? null : Number(pa),
+      mise: Number(d.get('mise')) || 0,
+    };
+  };
+
+  formulaire.addEventListener('input', () => {
+    const { ph, pa, mise } = lireChamps();
+    if (ph === null || pa === null) { apercu.textContent = ''; return; }
+    const selection = ph > pa ? 'home' : ph < pa ? 'away' : 'draw';
+    const cote = selection === 'home' ? cotes.home_odds
+      : selection === 'away' ? cotes.away_odds : cotes.draw_odds;
+    if (cote == null) { apercu.textContent = 'Cote indisponible pour cette issue.'; return; }
+    const base = (mise || 0) * Number(cote);
+    const gains = mise > 0 ? (selection === 'draw'
+      ? ` — gain : ${nombre(base * bonusEcart, 2)} ✦ (bon écart d'office ×${nombre(bonusEcart, 1)}) · score exact : ${nombre(base * bonusExact, 2)} ✦ (×${nombre(bonusExact, 1)})`
+      : ` — gain : ${nombre(base, 2)} ✦ · bon écart : ${nombre(base * bonusEcart, 2)} ✦ (×${nombre(bonusEcart, 1)}) · score exact : ${nombre(base * bonusExact, 2)} ✦ (×${nombre(bonusExact, 1)})`)
+      : '';
+    apercu.textContent = `Issue : ${SELECTIONS[selection]} (cote ${nombre(cote, 2)})${gains}`;
+  });
+
   formulaire.addEventListener('submit', async (evt) => {
     evt.preventDefault();
-    const donnees = new FormData(formulaire);
-    const selection = donnees.get('selection');
-    if (!selection) {
-      retour.textContent = 'Choisir une issue avant de miser.';
+    const { ph, pa, mise } = lireChamps();
+    if (ph === null || pa === null) {
+      retour.textContent = 'Indiquer un score pronostiqué.';
       return;
     }
     retour.textContent = 'Placement en cours…';
     try {
-      await placerPari(match.id, selection, Number(donnees.get('mise')));
-      retour.textContent = 'Pari placé ! Visible dans Mes paris.';
+      await placerPari(match.id, ph, pa, mise);
+      retour.textContent = `Pari placé (${ph}–${pa}) ! Visible dans Mes paris.`;
       window.dispatchEvent(new Event('eclats-changes'));
       formulaire.reset();
+      apercu.textContent = '';
     } catch (e) {
       retour.textContent = `Refusé : ${e.message}`;
     }
@@ -140,10 +174,12 @@ async function renduTermine(conteneur, match) {
       ${paris.length === 0 ? '<p class="muet">Aucun pari placé sur ce match.</p>'
         : paris.map((p) => `
           <p class="statut-${p.status}">
-            ${echapper(SELECTIONS[p.selection] || p.selection)} ·
+            Pronostic <strong>${echapper(p.predicted_home)}–${echapper(p.predicted_away)}</strong>
+            (${echapper(SELECTIONS[p.selection] || p.selection)}) ·
             mise ${nombre(p.stake_eclats)} ✦ · cote ${nombre(p.odds_at_bet, 2)}
             → <strong>${LIBELLES[p.status] || echapper(p.status)}</strong>
-            ${p.status === 'won' ? `(+${nombre(p.potential_payout, 2)} ✦)` : ''}
+            ${p.status === 'won' ? `(+${nombre(p.potential_payout * (p.bonus_multiplier || 1), 2)} ✦${
+              p.bonus_multiplier > 1 ? `, bonus ×${nombre(p.bonus_multiplier, 1)}` : ''})` : ''}
           </p>`).join('')}
     </section>
     <section id="zone-comparatif">${chargement()}</section>
