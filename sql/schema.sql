@@ -163,6 +163,16 @@ create table model_settings (
 
 insert into model_settings (id) values ('default');
 
+-- Les nouveaux projets Supabase activent la RLS par défaut sur toute
+-- table créée : sans policy, l'utilisateur connecté ne voit rien (constaté
+-- le 20/07/2026). Lecture + modification (page Réglages) explicites :
+alter table model_settings enable row level security;
+create policy "settings_read_auth" on model_settings
+  for select using (auth.role() = 'authenticated');
+create policy "settings_update_auth" on model_settings
+  for update using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
 -- Statistiques par équipe ET par compétition, recalculées après chaque
 -- match terminé de cette équipe dans cette compétition. La vue globale
 -- (toutes compétitions confondues) est calculée à la volée par agrégation
@@ -197,6 +207,12 @@ create table team_competition_stats (
 
 create index idx_team_comp_stats_team on team_competition_stats (team_id);
 create index idx_team_comp_stats_league on team_competition_stats (league_id);
+
+-- Même raison que model_settings : RLS par défaut, lecture authentifiée
+-- explicite (écriture réservée au rôle service, comme les autres stats)
+alter table team_competition_stats enable row level security;
+create policy "team_comp_stats_read_all" on team_competition_stats
+  for select using (auth.role() = 'authenticated');
 
 create view team_global_stats as
 select
