@@ -20,13 +20,18 @@ class SupabaseDB:
             key = os.environ["SUPABASE_SERVICE_KEY"]
         except KeyError as exc:
             raise SystemExit(f"Variable d'environnement manquante : {exc}") from exc
-        self.base = url.rstrip("/") + "/rest/v1"
+        # Tolère une URL collée avec son suffixe /rest/v1
+        url = url.rstrip("/")
+        if url.endswith("/rest/v1"):
+            url = url[: -len("/rest/v1")]
+        self.base = url + "/rest/v1"
         self.session = requests.Session()
-        self.session.headers.update({
-            "apikey": key,
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        })
+        headers = {"apikey": key, "Content-Type": "application/json"}
+        # Clés legacy = JWT à passer aussi en Bearer ; les clés nouveau
+        # format (sb_secret_*) ne se passent que dans apikey
+        if not key.startswith("sb_"):
+            headers["Authorization"] = f"Bearer {key}"
+        self.session.headers.update(headers)
 
     def select(self, table, params=None):
         r = self.session.get(f"{self.base}/{table}", params=params or {}, timeout=30)

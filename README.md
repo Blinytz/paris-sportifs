@@ -22,6 +22,7 @@ sql/
   schema.sql             # tables + RLS + vue + seed des 39 ligues (spec section 3)
   rpc_place_bet.sql      # fonction SQL de placement de pari (voir note ci-dessous)
   standings.sql          # classements officiels + colonnes de suivi du sync
+  grants.sql             # droits des rôles (nouveaux projets Supabase)
 .github/workflows/       # sync-football.yml et sync-rugby.yml (cron 6h UTC)
 pwa/                     # la PWA (routes en hash : #/match/{id}, #/equipe/{id}…)
 ```

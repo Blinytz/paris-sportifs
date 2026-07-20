@@ -46,16 +46,16 @@ async function rafraichir() {
 }
 
 async function appel(path, options = {}, dejaRetente = false) {
-  const jeton = session?.access_token || SUPABASE_ANON_KEY;
-  const r = await fetch(`${SUPABASE_URL}${path}`, {
-    ...options,
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${jeton}`,
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-  });
+  // Authorization : le jeton de session si connecté. Sans session, on
+  // n'envoie que l'apikey (compatible avec les clés nouveau format
+  // sb_publishable_*, qui ne sont pas des JWT valides pour Bearer).
+  const entetes = {
+    apikey: SUPABASE_ANON_KEY,
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+  if (session?.access_token) entetes.Authorization = `Bearer ${session.access_token}`;
+  const r = await fetch(`${SUPABASE_URL}${path}`, { ...options, headers: entetes });
   if (r.status === 401 && !dejaRetente && await rafraichir()) {
     return appel(path, options, true);
   }
