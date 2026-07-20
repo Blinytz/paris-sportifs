@@ -21,7 +21,7 @@ scripts/
 sql/
   schema.sql             # tables + RLS + vue + seed des 39 ligues (spec section 3)
   rpc_place_bet.sql      # fonction SQL de placement de pari (voir note ci-dessous)
-  standings.sql          # classements officiels + désactivation A-League (quota)
+  standings.sql          # classements officiels + colonnes de suivi du sync
 .github/workflows/       # sync-football.yml et sync-rugby.yml (cron 6h UTC)
 pwa/                     # la PWA (routes en hash : #/match/{id}, #/equipe/{id}…)
 ```
@@ -103,9 +103,8 @@ fenêtre chaque jour) est remplacé par un sync adaptatif :
 - **Premier démarrage** : chaque ligue jamais visitée reçoit un bootstrap
   J-1..J+9 (11 requêtes) ; le plafond étale ce bootstrap sur ~3-4 jours,
   championnats d'abord.
-- L'A-League reste désactivée (`active = false`, décision du 20/07/2026) ;
-  la réactiver si souhaité : `update leagues set active = true where
-  external_id = 160772;` — le sync adaptatif absorbe le surcoût.
+- Les 39 compétitions de la spec sont actives, A-League comprise
+  (réintégrée le 20/07/2026 : le sync adaptatif absorbe le surcoût).
 - Éviter de relancer manuellement un workflow le même jour UTC : chaque
   run reconsomme du quota.
 

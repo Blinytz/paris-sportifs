@@ -2,17 +2,10 @@
 -- Classements officiels (endpoint /standings de Highlightly)
 -- Migration additive — à exécuter APRÈS schema.sql.
 --
--- Rafraîchis par sync_matches.py en rotation par ancienneté, uniquement
--- pour les ligues de catégorie 'championnat', avec un budget quotidien
--- strict (5 requêtes foot, 2 rugby) pour rester sous le quota de
--- 100 requêtes/jour par sous-API :
---   foot  : 31 ligues × 3 dates = 93  + 5 classements = 98/100
---   rugby :  7 ligues × 9 dates = 63  + 2 classements = 65/100
+-- Rafraîchis par sync_matches.py chaque matin pour les championnats
+-- ayant eu un match terminé depuis leur dernière mise à jour, sur le
+-- quota restant du run (sync piloté par le calendrier, voir README).
 -- ============================================================
-
--- L'A-League australienne est désactivée pour libérer du quota
--- (décision du 20/07/2026 — priorité : ne jamais dépasser 100/jour).
-update leagues set active = false where external_id = 160772;
 
 -- Saison courante d'une ligue, capturée depuis les réponses /matches
 -- (champ league.season) — sert de paramètre `season` à /standings.
