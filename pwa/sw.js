@@ -1,7 +1,9 @@
 // Service worker minimal : cache du shell applicatif, réseau d'abord pour
 // tout le reste (les données Supabase ne sont jamais mises en cache).
 
-const CACHE = 'paris-sportifs-v1';
+// Incrémenter à chaque déploiement qui modifie le shell : l'activation
+// purge l'ancien cache et évite de servir des modules JS périmés.
+const CACHE = 'paris-sportifs-v2';
 const SHELL = [
   './', 'index.html', 'css/style.css', 'manifest.json',
   'js/app.js', 'js/router.js', 'js/supabase.js', 'js/api.js', 'js/ui.js',

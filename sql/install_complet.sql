@@ -157,8 +157,12 @@ create table model_settings (
   draw_base_prob_rugby numeric not null default 0.04,
   draw_min_prob_rugby numeric not null default 0.02,
   draw_max_prob_rugby numeric not null default 0.05,
-  -- Bonus du pari sur score : bon écart signé / score exact
+  -- Bonus du pari sur score : bon écart signé / score exact.
+  -- Cas particulier : un pronostic de nul gagnant a toujours le bon écart
+  -- (0), son bonus écart est donc réduit (bonus_ecart_nul) pour ne pas
+  -- rendre le pari nul systématiquement trop rentable.
   bonus_ecart numeric not null default 1.5,
+  bonus_ecart_nul numeric not null default 1.25,
   bonus_score_exact numeric not null default 2.0,
   form_window_size integer not null default 5,
   updated_at timestamptz not null default now()

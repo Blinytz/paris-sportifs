@@ -11,7 +11,7 @@ import {
 } from '../api.js';
 import {
   badgesForme, chargement, dateHeure, echapper, erreur, formeDepuisMatchs,
-  nombre, ordinal, probaImplicite,
+  libelleBonus, nombre, ordinal, probaImplicite,
 } from '../ui.js';
 
 const SELECTIONS = { home: '1 (domicile)', draw: 'Nul', away: '2 (extérieur)' };
@@ -110,6 +110,7 @@ function brancherPari(conteneur, match, cotes, reglages) {
   const retour = conteneur.querySelector('#retour-pari');
   const apercu = conteneur.querySelector('#apercu-pari');
   const bonusEcart = Number(reglages?.bonus_ecart) || 1.5;
+  const bonusEcartNul = Number(reglages?.bonus_ecart_nul) || 1.25;
   const bonusExact = Number(reglages?.bonus_score_exact) || 2;
 
   const lireChamps = () => {
@@ -131,7 +132,7 @@ function brancherPari(conteneur, match, cotes, reglages) {
     if (cote == null) { apercu.textContent = 'Cote indisponible pour cette issue.'; return; }
     const base = (mise || 0) * Number(cote);
     const gains = mise > 0 ? (selection === 'draw'
-      ? ` — gain : ${nombre(base * bonusEcart, 2)} ✦ (bon écart d'office ×${nombre(bonusEcart, 1)}) · score exact : ${nombre(base * bonusExact, 2)} ✦ (×${nombre(bonusExact, 1)})`
+      ? ` — gain : ${nombre(base * bonusEcartNul, 2)} ✦ (bon écart d'office, bonus nul réduit ×${nombre(bonusEcartNul, 2)}) · score exact : ${nombre(base * bonusExact, 2)} ✦ (×${nombre(bonusExact, 1)})`
       : ` — gain : ${nombre(base, 2)} ✦ · bon écart : ${nombre(base * bonusEcart, 2)} ✦ (×${nombre(bonusEcart, 1)}) · score exact : ${nombre(base * bonusExact, 2)} ✦ (×${nombre(bonusExact, 1)})`)
       : '';
     apercu.textContent = `Issue : ${SELECTIONS[selection]} (cote ${nombre(cote, 2)})${gains}`;
@@ -165,7 +166,7 @@ async function renduTermine(conteneur, match) {
     mesParisSurMatch(match.id),
   ]);
   const cotes = cotesAvant.get(match.id);
-  const LIBELLES = { pending: 'En cours', won: 'Gagné ✦', lost: 'Perdu', void: 'Remboursé' };
+  const LIBELLES = { pending: 'En cours', won: 'Gagné', lost: 'Perdu', void: 'Remboursé' };
 
   conteneur.innerHTML = `
     ${entete(match, `${match.score_home ?? '?'} – ${match.score_away ?? '?'}`)}
@@ -178,8 +179,9 @@ async function renduTermine(conteneur, match) {
             (${echapper(SELECTIONS[p.selection] || p.selection)}) ·
             mise ${nombre(p.stake_eclats)} ✦ · cote ${nombre(p.odds_at_bet, 2)}
             → <strong>${LIBELLES[p.status] || echapper(p.status)}</strong>
-            ${p.status === 'won' ? `(+${nombre(p.potential_payout * (p.bonus_multiplier || 1), 2)} ✦${
-              p.bonus_multiplier > 1 ? `, bonus ×${nombre(p.bonus_multiplier, 1)}` : ''})` : ''}
+            ${p.status === 'won' ? `: +${nombre(p.potential_payout * (p.bonus_multiplier || 1), 2)} ✦
+              <span class="muet">(${nombre(p.potential_payout, 2)} ✦ —
+              ${echapper(libelleBonus(p, match.score_home, match.score_away))})</span>` : ''}
           </p>`).join('')}
     </section>
     <section id="zone-comparatif">${chargement()}</section>

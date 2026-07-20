@@ -1,7 +1,9 @@
 // Historique des paris de l'utilisateur (pending / won / lost / void).
 
 import { mesParis } from '../api.js';
-import { chargement, dateHeure, echapper, erreur, nombre } from '../ui.js';
+import {
+  chargement, dateHeure, echapper, erreur, libelleBonus, nombre,
+} from '../ui.js';
 
 const LIBELLES = {
   pending: 'En cours', won: 'Gagné', lost: 'Perdu', void: 'Remboursé',
@@ -50,8 +52,8 @@ function cartePari(p) {
         (${echapper(SELECTIONS[p.selection] || p.selection)}) ·
         mise ${nombre(p.stake_eclats)} ✦ · cote ${nombre(p.odds_at_bet, 2)} ·
         ${p.status === 'won'
-          ? `gain ${nombre(p.potential_payout * (p.bonus_multiplier || 1), 2)} ✦${
-              p.bonus_multiplier > 1 ? ` (bonus ×${nombre(p.bonus_multiplier, 1)})` : ''}`
+          ? `gain ${nombre(p.potential_payout * (p.bonus_multiplier || 1), 2)} ✦
+             (${echapper(libelleBonus(p, m?.score_home, m?.score_away))})`
           : `gain de base ${nombre(p.potential_payout, 2)} ✦ (jusqu'à ×2 si score exact)`}
       </div>
     </a>`;

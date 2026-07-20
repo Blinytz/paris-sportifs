@@ -68,6 +68,25 @@ export function probaImplicite(cote) {
   return `${Math.round(100 / Number(cote))} %`;
 }
 
+// Libellé explicite du bonus appliqué à un pari réglé, déduit du
+// pronostic face au score réel (le multiplicateur stocké en base fait foi
+// pour le montant ; le libellé explique d'où il vient).
+export function libelleBonus(pari, scoreHome, scoreAway) {
+  const m = Number(pari.bonus_multiplier) || 1;
+  const facteur = `×${Number(m).toLocaleString('fr-FR', { maximumFractionDigits: 2 })}`;
+  if (pari.predicted_home == null || scoreHome == null || scoreAway == null) {
+    return m > 1 ? `bonus ${facteur}` : 'cote seule, sans bonus';
+  }
+  if (pari.predicted_home === scoreHome && pari.predicted_away === scoreAway) {
+    return `score exact ${facteur}`;
+  }
+  if ((pari.predicted_home - pari.predicted_away) === (scoreHome - scoreAway)) {
+    return pari.predicted_home === pari.predicted_away
+      ? `bon écart (nul) ${facteur}` : `bon écart ${facteur}`;
+  }
+  return 'bonne issue seule, sans bonus';
+}
+
 // "1" -> "1er", "3" -> "3e"
 export function ordinal(position) {
   if (position === undefined || position === null) return '—';

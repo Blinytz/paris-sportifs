@@ -44,12 +44,19 @@ def _outcome(home, away):
 
 def compute_settlement(pred_h, pred_a, score_h, score_a, settings):
     """Retourne (gagne, multiplicateur) pour un pronostic face au score réel.
-    multiplicateur : None si perdu, sinon 1 / bonus_ecart / bonus_score_exact."""
+    multiplicateur : None si perdu, sinon 1 / bonus_ecart / bonus_ecart_nul
+    / bonus_score_exact.
+
+    Un pronostic de nul gagnant a toujours le bon écart (0) : son bonus
+    écart est réduit (bonus_ecart_nul, déf. 1.25) pour ne pas rendre le
+    pari nul systématiquement trop rentable."""
     if _outcome(pred_h, pred_a) != _outcome(score_h, score_a):
         return False, None
     if pred_h == score_h and pred_a == score_a:
         return True, float(settings["bonus_score_exact"])
     if (pred_h - pred_a) == (score_h - score_a):
+        if pred_h == pred_a:
+            return True, float(settings["bonus_ecart_nul"])
         return True, float(settings["bonus_ecart"])
     return True, 1.0
 
@@ -126,7 +133,7 @@ def settle_all(db, settings):
 
 
 def _tests():
-    s = {"bonus_ecart": 1.5, "bonus_score_exact": 2.0}
+    s = {"bonus_ecart": 1.5, "bonus_ecart_nul": 1.25, "bonus_score_exact": 2.0}
     # Exemples de la décision du 20/07/2026 :
     # pronostic 1-0, score 2-1 : bonne issue + bon écart (+1) -> ×1.5
     assert compute_settlement(1, 0, 2, 1, s) == (True, 1.5)
@@ -136,8 +143,9 @@ def _tests():
     assert compute_settlement(2, 1, 2, 1, s) == (True, 2.0)
     # bonne issue, mauvais écart (1-0 pronostiqué, 3-0 réel) -> ×1
     assert compute_settlement(1, 0, 3, 0, s) == (True, 1.0)
-    # nul pronostiqué, autre nul : écart 0 forcément bon -> ×1.5
-    assert compute_settlement(1, 1, 2, 2, s) == (True, 1.5)
+    # nul pronostiqué, autre nul : écart 0 forcément bon mais bonus réduit
+    # (décision du 20/07/2026) -> ×1.25 et pas ×1.5
+    assert compute_settlement(1, 1, 2, 2, s) == (True, 1.25)
     # nul exact -> ×2 (valable rugby comme foot, ex. 12-12)
     assert compute_settlement(12, 12, 12, 12, s) == (True, 2.0)
     # nul pronostiqué, victoire réelle -> perdu

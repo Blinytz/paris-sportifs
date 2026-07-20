@@ -55,6 +55,7 @@ On parie un **score exact** (ex. 2-1), pas une simple issue. Au règlement :
 | Mauvaise issue (vainqueur/nul raté) | Perdu (mise débitée au pari) |
 | Bonne issue | mise × cote de l'issue |
 | + bon **écart signé** (ex. 1-0 pronostiqué, 2-1 réel : +1 = +1) | gain × **1,5** (`bonus_ecart`) |
+| + bon écart sur un **pronostic de nul** (toujours le cas si l'issue est bonne) | gain × **1,25** (`bonus_ecart_nul`, réduit exprès) |
 | + **score exact** | gain × **2** (`bonus_score_exact`) |
 
 Précisions :
@@ -63,8 +64,13 @@ Précisions :
 - Le **nul est pariable au rugby** comme au foot (marché 3 voies partout).
   Sa probabilité rugby est basse (paramètres `*_rugby` des réglages), donc
   sa cote est haute (plafonnée par la cote maximale). Un pronostic de nul
-  gagnant a d'office le bon écart (0) → au moins ×1,5. L'ancienne règle
-  « nul rugby = remboursement » est supprimée.
+  gagnant a d'office le bon écart (0) → c'est pour ça que son bonus écart
+  est réduit à ×1,25 (sinon parier nul serait systématiquement trop
+  rentable). L'ancienne règle « nul rugby = remboursement » est supprimée.
+- Au règlement, le libellé du bonus appliqué est affiché explicitement
+  (« score exact ×2 », « bon écart ×1,5 », « bon écart (nul) ×1,25 »,
+  « bonne issue seule, sans bonus ») dans Mes paris et sur la page du
+  match terminé.
 - Les bonus sont réglables dans la page Réglages (lus à chaque run,
   règle 10). `python scripts/settle_bets.py --test` vérifie la grille.
 
