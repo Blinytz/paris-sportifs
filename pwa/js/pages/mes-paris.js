@@ -44,11 +44,11 @@ function cartePari(p) {
       <div class="carte-match-equipes">
         <span>${echapper(m?.home?.name)}</span>
         <span class="muet">${m?.status === 'finished'
-          ? `${m.score_home} – ${m.score_away}` : 'vs'}</span>
+          ? `${m.score_home} - ${m.score_away}` : 'vs'}</span>
         <span>${echapper(m?.away?.name)}</span>
       </div>
       <div class="carte-pari-detail">
-        Pronostic <strong>${echapper(p.predicted_home)}–${echapper(p.predicted_away)}</strong>
+        Pronostic <strong>${echapper(p.predicted_home)}-${echapper(p.predicted_away)}</strong>
         (${echapper(SELECTIONS[p.selection] || p.selection)}) ·
         mise ${nombre(p.stake_eclats)} ✦ · cote ${nombre(p.odds_at_bet, 2)} ·
         ${p.status === 'won'

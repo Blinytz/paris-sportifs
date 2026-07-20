@@ -94,7 +94,7 @@ function carteCompetition(s, posParLigue) {
   if (rang) {
     ligneRang = `<p><a class="lien-classement" href="#/classement/${s.league_id}">
       🏆 ${echapper(ordinal(rang.position))} du classement (${nombre(rang.points)} pts)
-      — voir le tableau complet</a></p>`;
+      · voir le tableau complet</a></p>`;
   } else if (s.league?.category === 'championnat') {
     // Championnat sans classement encore synchronisé : lien de secours
     ligneRang = `<p><a class="lien-classement" href="${lienClassementExterne(s.league)}"
@@ -140,7 +140,7 @@ function ligneMatch(m, teamId) {
       <div class="carte-match-equipes">
         <span class="${m.home_team_id === teamId ? 'gras' : ''}">${echapper(m.home?.name)}</span>
         <span class="${termine ? 'score' : 'muet'}">${termine
-          ? `${m.score_home ?? '?'} – ${m.score_away ?? '?'}` : 'vs'}</span>
+          ? `${m.score_home ?? '?'} - ${m.score_away ?? '?'}` : 'vs'}</span>
         <span class="${m.away_team_id === teamId ? 'gras' : ''}">${echapper(m.away?.name)}</span>
       </div>
     </a>`;

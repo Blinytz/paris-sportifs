@@ -29,15 +29,15 @@ const FMT_JOUR = new Intl.DateTimeFormat('fr-FR', {
 });
 
 export function dateHeure(iso) {
-  return iso ? FMT_DATE.format(new Date(iso)) : '—';
+  return iso ? FMT_DATE.format(new Date(iso)) : '?';
 }
 
 export function jour(iso) {
-  return iso ? FMT_JOUR.format(new Date(iso)) : '—';
+  return iso ? FMT_JOUR.format(new Date(iso)) : '?';
 }
 
 export function nombre(valeur, decimales = 0) {
-  if (valeur === undefined || valeur === null) return '—';
+  if (valeur === undefined || valeur === null) return '?';
   return Number(valeur).toLocaleString('fr-FR', {
     minimumFractionDigits: decimales, maximumFractionDigits: decimales,
   });
@@ -45,7 +45,7 @@ export function nombre(valeur, decimales = 0) {
 
 // "V,N,D,V,V" -> pastilles colorées (plus récent en premier)
 export function badgesForme(lastResults) {
-  if (!lastResults) return '<span class="muet">—</span>';
+  if (!lastResults) return '<span class="muet">aucun</span>';
   return lastResults.split(',').map((code) =>
     `<span class="forme forme-${echapper(code)}">${echapper(code)}</span>`).join('');
 }
@@ -64,7 +64,7 @@ export function formeDepuisMatchs(matchs, teamId, fenetre) {
 
 // Probabilité implicite affichable à partir d'une cote
 export function probaImplicite(cote) {
-  if (!cote) return '—';
+  if (!cote) return '?';
   return `${Math.round(100 / Number(cote))} %`;
 }
 
@@ -89,7 +89,7 @@ export function libelleBonus(pari, scoreHome, scoreAway) {
 
 // "1" -> "1er", "3" -> "3e"
 export function ordinal(position) {
-  if (position === undefined || position === null) return '—';
+  if (position === undefined || position === null) return '?';
   return position === 1 ? '1er' : `${position}e`;
 }
 

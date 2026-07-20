@@ -16,9 +16,9 @@ import {
 
 const SELECTIONS = { home: '1 (domicile)', draw: 'Nul', away: '2 (extérieur)' };
 const STATUTS = {
-  live: 'Match en cours — paris fermés',
-  postponed: 'Match reporté — paris remboursés',
-  cancelled: 'Match annulé — paris remboursés',
+  live: 'Match en cours : paris fermés',
+  postponed: 'Match reporté : paris remboursés',
+  cancelled: 'Match annulé : paris remboursés',
 };
 
 export async function pageMatch(conteneur, matchId) {
@@ -92,7 +92,7 @@ function formulairePari(match, cotes) {
       <div class="rangee-score">
         <label>${echapper(match.home?.name)}
           <input type="number" name="ph" min="0" max="199" step="1" inputmode="numeric" required></label>
-        <span class="tiret">–</span>
+        <span class="tiret">-</span>
         <label>${echapper(match.away?.name)}
           <input type="number" name="pa" min="0" max="199" step="1" inputmode="numeric" required></label>
       </div>
@@ -132,8 +132,8 @@ function brancherPari(conteneur, match, cotes, reglages) {
     if (cote == null) { apercu.textContent = 'Cote indisponible pour cette issue.'; return; }
     const base = (mise || 0) * Number(cote);
     const gains = mise > 0 ? (selection === 'draw'
-      ? ` — gain : ${nombre(base * bonusEcartNul, 2)} ✦ (bon écart d'office, bonus nul réduit ×${nombre(bonusEcartNul, 2)}) · score exact : ${nombre(base * bonusExact, 2)} ✦ (×${nombre(bonusExact, 1)})`
-      : ` — gain : ${nombre(base, 2)} ✦ · bon écart : ${nombre(base * bonusEcart, 2)} ✦ (×${nombre(bonusEcart, 1)}) · score exact : ${nombre(base * bonusExact, 2)} ✦ (×${nombre(bonusExact, 1)})`)
+      ? ` · gain : ${nombre(base * bonusEcartNul, 2)} ✦ (bon écart d'office, bonus nul réduit ×${nombre(bonusEcartNul, 2)}) · score exact : ${nombre(base * bonusExact, 2)} ✦ (×${nombre(bonusExact, 1)})`
+      : ` · gain : ${nombre(base, 2)} ✦ · bon écart : ${nombre(base * bonusEcart, 2)} ✦ (×${nombre(bonusEcart, 1)}) · score exact : ${nombre(base * bonusExact, 2)} ✦ (×${nombre(bonusExact, 1)})`)
       : '';
     apercu.textContent = `Issue : ${SELECTIONS[selection]} (cote ${nombre(cote, 2)})${gains}`;
   });
@@ -148,7 +148,7 @@ function brancherPari(conteneur, match, cotes, reglages) {
     retour.textContent = 'Placement en cours…';
     try {
       await placerPari(match.id, ph, pa, mise);
-      retour.textContent = `Pari placé (${ph}–${pa}) ! Visible dans Mes paris.`;
+      retour.textContent = `Pari placé (${ph}-${pa}) ! Visible dans Mes paris.`;
       window.dispatchEvent(new Event('eclats-changes'));
       formulaire.reset();
       apercu.textContent = '';
@@ -169,18 +169,18 @@ async function renduTermine(conteneur, match) {
   const LIBELLES = { pending: 'En cours', won: 'Gagné', lost: 'Perdu', void: 'Remboursé' };
 
   conteneur.innerHTML = `
-    ${entete(match, `${match.score_home ?? '?'} – ${match.score_away ?? '?'}`)}
+    ${entete(match, `${match.score_home ?? '?'} - ${match.score_away ?? '?'}`)}
     <section class="carte">
       <h2>Mes paris sur ce match</h2>
       ${paris.length === 0 ? '<p class="muet">Aucun pari placé sur ce match.</p>'
         : paris.map((p) => `
           <p class="statut-${p.status}">
-            Pronostic <strong>${echapper(p.predicted_home)}–${echapper(p.predicted_away)}</strong>
+            Pronostic <strong>${echapper(p.predicted_home)}-${echapper(p.predicted_away)}</strong>
             (${echapper(SELECTIONS[p.selection] || p.selection)}) ·
             mise ${nombre(p.stake_eclats)} ✦ · cote ${nombre(p.odds_at_bet, 2)}
             → <strong>${LIBELLES[p.status] || echapper(p.status)}</strong>
             ${p.status === 'won' ? `: +${nombre(p.potential_payout * (p.bonus_multiplier || 1), 2)} ✦
-              <span class="muet">(${nombre(p.potential_payout, 2)} ✦ —
+              <span class="muet">(${nombre(p.potential_payout, 2)} ✦ ·
               ${echapper(libelleBonus(p, match.score_home, match.score_away))})</span>` : ''}
           </p>`).join('')}
     </section>
@@ -192,7 +192,7 @@ async function renduTermine(conteneur, match) {
     confrontations(match.home_team_id, match.away_team_id),
   ]);
   conteneur.querySelector('#zone-comparatif').innerHTML = `
-    <p class="muet">⏱ C'était la situation avant le match — les statistiques
+    <p class="muet">⏱ C'était la situation avant le match : les statistiques
     ci-dessous sont figées à l'avant-match, pas recalculées après.</p>
     ${comparatif}`;
   conteneur.querySelector('#zone-h2h').innerHTML = blocH2H(h2h, match.id);
@@ -201,7 +201,7 @@ async function renduTermine(conteneur, match) {
 
 async function renduAutre(conteneur, match) {
   conteneur.innerHTML = `
-    ${entete(match, match.status === 'live' ? '⚡' : '—')}
+    ${entete(match, match.status === 'live' ? '⚡' : 'vs')}
     <p class="pastille">${echapper(STATUTS[match.status] || match.status)}</p>`;
 }
 
@@ -220,7 +220,7 @@ function statsDepuisMatchs(matchs, teamId) {
   return s;
 }
 
-const moyenne = (somme, total) => total ? nombre(somme / total, 1) : '—';
+const moyenne = (somme, total) => total ? nombre(somme / total, 1) : '?';
 
 async function blocComparatif(match, cotes, avant) {
   const fenetre = (await lireReglages())?.form_window_size || 5;
@@ -297,7 +297,7 @@ function blocH2H(rencontres, matchIdCourant) {
       </div>
       <div class="carte-match-equipes">
         <span>${echapper(m.home?.name)}</span>
-        <span class="score">${m.score_home ?? '?'} – ${m.score_away ?? '?'}</span>
+        <span class="score">${m.score_home ?? '?'} - ${m.score_away ?? '?'}</span>
         <span>${echapper(m.away?.name)}</span>
       </div>
     </a>`;

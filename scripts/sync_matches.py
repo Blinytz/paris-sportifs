@@ -3,14 +3,20 @@
 
 Usage : python sync_matches.py --sport football|rugby
 
-Déroulé d'un run :
+Déroulé d'un run (sync piloté par le calendrier, décision du 20/07/2026) :
   1. charge model_settings (règle 10)
-  2. pour chaque ligue active du sport, appelle /matches sur la fenêtre de
-     dates (foot : J-1 à J+1 ; rugby : J-1 à J+7) — budget quota section 5
+  2. pour chaque ligue active du sport (championnats d'abord), appelle
+     /matches uniquement sur les dates utiles : sonde de découverte J+9
+     chaque jour + jours de la fenêtre de suivi (foot J-1..J+1, rugby
+     J-1..J+7) où des matchs sont connus en base. Une compétition sans
+     activité (coupe entre deux tours, tournoi hors période) ne coûte que
+     1 requête/jour. Plafond dur : dépassement de quota impossible.
   3. upsert équipes (règle 2) et matchs (règle 1)
   4. verrouille les cotes des matchs dont le coup d'envoi est passé (règle 4)
   5. applique le Elo + stats sur les matchs nouvellement terminés (règles 3 et 11)
   6. génère les cotes des matchs à venir non verrouillés (section 6, règle 9)
+  7. rafraîchit les classements des championnats ayant joué depuis leur
+     dernière mise à jour (budget dynamique sur le quota restant)
 
 settle_bets.py s'exécute juste après, dans le même job GitHub Actions.
 """
@@ -28,15 +34,26 @@ from stats import update_stats_for_match
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("sync")
 
-# Fenêtres de dates par sport (jours relatifs à aujourd'hui UTC) — section 5
+# Fenêtres de SUIVI par sport (jours relatifs à aujourd'hui UTC) : à
+# l'intérieur, un jour n'est interrogé que si des matchs y sont connus
 WINDOWS = {"football": (-1, 1), "rugby": (-1, 7)}
 
-# Budget quotidien de requêtes /standings, en rotation par ancienneté sur
-# les ligues 'championnat'. Budget total par run :
-#   foot  : 31 ligues actives × 3 dates = 93  + 5 = 98/100
-#   rugby :  7 ligues × 9 dates        = 63  + 2 = 65/100
-# (l'A-League est désactivée en base — voir sql/standings.sql)
-STANDINGS_BUDGET = {"football": 5, "rugby": 2}
+# Sonde de découverte quotidienne : chaque jour, chaque ligue est sondée à
+# J+9 (« tapis roulant » : toute date future passe une fois par J+9, donc
+# tout match annoncé au moins 9 jours à l'avance est découvert). Les
+# matchs plus proches sont ensuite suivis via la fenêtre ci-dessus.
+PROBE_OFFSET = 9
+
+# Quota Highlightly : 100 requêtes/jour par sous-API. Réserve de sécurité
+# + réserve pour les classements (1 par championnat actif) ; le sync des
+# matchs s'arrête net s'il atteint son plafond (dépassement impossible).
+QUOTA_JOURNALIER = 100
+QUOTA_RESERVE = 1
+
+# Ordre de passage sous contrainte de quota : les championnats d'abord
+# (paris + classements), l'international en dernier
+PRIORITE_CATEGORIE = {"championnat": 0, "coupe_continentale": 1,
+                      "coupe_nationale": 2, "international": 3}
 
 # Mapping state.description Highlightly -> status en base (section 2)
 STATUS_MAP = {
@@ -52,10 +69,32 @@ STATUS_MAP = {
 }
 
 
-def date_window(sport):
+def dates_pour_ligue(db, league, sport):
+    """Dates à interroger pour cette ligue aujourd'hui (sync piloté par le
+    calendrier) :
+    - jamais visitée -> bootstrap complet J-1..J+9 ;
+    - sinon : la sonde J+9, plus chaque jour de la fenêtre de suivi où la
+      base connaît un match encore à suivre (à venir, en cours, ou terminé
+      sans score exploitable). Une ligue sans activité coûte 1 requête/jour.
+    """
     today = datetime.now(timezone.utc).date()
+    if league.get("last_checked_at") is None:
+        return [(today + timedelta(days=d)).isoformat()
+                for d in range(-1, PROBE_OFFSET + 1)]
+
     first, last = WINDOWS[sport]
-    return [(today + timedelta(days=d)).isoformat() for d in range(first, last + 1)]
+    debut = (today + timedelta(days=first)).isoformat()
+    fin = (today + timedelta(days=last + 1)).isoformat()
+    rows = db.select("matches", {
+        "league_id": f"eq.{league['id']}",
+        "and": f"(kickoff_at.gte.{debut}T00:00:00Z,kickoff_at.lt.{fin}T00:00:00Z)",
+        "or": ("(status.in.(scheduled,live),"
+               "and(status.eq.finished,score_home.is.null))"),
+        "select": "kickoff_at",
+    })
+    dates = {r["kickoff_at"][:10] for r in rows}
+    dates.add((today + timedelta(days=PROBE_OFFSET)).isoformat())
+    return sorted(dates)
 
 
 def map_status(raw):
@@ -164,19 +203,44 @@ def sync_league(db, client, league, dates, team_cache):
     return saison_max
 
 
+def _standings_a_rafraichir(db, league):
+    """Un classement ne bouge que si un match s'est terminé : inutile de
+    dépenser une requête sinon."""
+    if not league.get("standings_synced_at"):
+        return True
+    rows = db.select("matches", {
+        "league_id": f"eq.{league['id']}",
+        "status": "eq.finished",
+        "kickoff_at": f"gt.{league['standings_synced_at']}",
+        "select": "id", "limit": "1",
+    })
+    return bool(rows)
+
+
 def sync_standings(db, client, sport, team_cache):
-    """Rafraîchit les classements officiels (endpoint /standings) pour les
-    ligues 'championnat', en rotation par ancienneté, dans la limite du
-    budget quotidien STANDINGS_BUDGET. Le remplacement des lignes se fait
-    par (league_id, season) entier : delete puis insert."""
+    """Rafraîchit les classements officiels (endpoint /standings) des
+    ligues 'championnat' dont un match s'est terminé depuis la dernière
+    mise à jour, plus ancien rafraîchissement d'abord, dans la limite du
+    quota restant du jour (budget dynamique : quota - réserve - requêtes
+    déjà consommées par le sync des matchs). Le remplacement des lignes se
+    fait par (league_id, season) entier : delete puis insert."""
     now_iso = datetime.now(timezone.utc).isoformat()
-    candidates = db.select("leagues", {
+    budget = QUOTA_JOURNALIER - QUOTA_RESERVE - client.request_count
+    if budget <= 0:
+        log.warning("Aucun budget quota restant pour les classements (%d requêtes consommées)",
+                    client.request_count)
+        return
+    candidates = [l for l in db.select("leagues", {
         "sport": f"eq.{sport}", "active": "is.true",
         "category": "eq.championnat",
         "current_season": "not.is.null",
         "order": "standings_synced_at.asc.nullsfirst",
-        "limit": str(STANDINGS_BUDGET[sport]),
-    })
+    }) if _standings_a_rafraichir(db, l)]
+    if len(candidates) > budget:
+        log.warning("Classements : %d ligues à rafraîchir mais budget de %d ; "
+                    "les restantes passeront au prochain run",
+                    len(candidates), budget)
+        candidates = candidates[:budget]
     for league in candidates:
         try:
             payload = client.get_standings(league["external_id"],
@@ -314,23 +378,37 @@ def main():
     settings = load_settings(db)
     client = HighlightlyClient(sport)
     leagues = db.select("leagues", {"sport": f"eq.{sport}", "active": "is.true"})
-    dates = date_window(sport)
-    log.info("Sync %s : %d ligues × %d dates = %d requêtes prévues",
-             sport, len(leagues), len(dates), len(leagues) * len(dates))
+    leagues.sort(key=lambda l: (PRIORITE_CATEGORIE.get(l["category"], 9), l["name"]))
+
+    # Plafond dur du sync des matchs : quota - réserve - budget classements
+    # (1 requête par championnat actif). Dépassement impossible.
+    nb_championnats = sum(1 for l in leagues if l["category"] == "championnat")
+    plafond_matchs = QUOTA_JOURNALIER - QUOTA_RESERVE - nb_championnats
+    log.info("Sync %s : %d ligues, plafond matchs %d requêtes, réserve "
+             "classements %d", sport, len(leagues), plafond_matchs, nb_championnats)
 
     team_cache = TeamCache(db, sport)
+    now_iso = datetime.now(timezone.utc).isoformat()
     for league in leagues:
+        dates = dates_pour_ligue(db, league, sport)
+        if client.request_count + len(dates) > plafond_matchs:
+            log.warning("Plafond quota atteint (%d requêtes) : ligue %s et "
+                        "suivantes reportées au prochain run",
+                        client.request_count, league["name"])
+            break
         saison = sync_league(db, client, league, dates, team_cache)
         if saison and saison != league.get("current_season"):
             db.update("leagues", {"current_season": saison},
                       {"id": f"eq.{league['id']}"})
+        db.update("leagues", {"last_checked_at": now_iso},
+                  {"id": f"eq.{league['id']}"})
 
     lock_started_matches(db)
     apply_elo_and_stats(db, sport, settings)
     generate_upcoming_odds(db, sport, settings)
     sync_standings(db, client, sport, team_cache)
-    log.info("Sync %s terminé — %d requêtes Highlightly consommées",
-             sport, client.request_count)
+    log.info("Sync %s terminé : %d requêtes Highlightly consommées sur %d",
+             sport, client.request_count, QUOTA_JOURNALIER)
 
 
 if __name__ == "__main__":

@@ -74,20 +74,40 @@ Précisions :
 - Les bonus sont réglables dans la page Réglages (lus à chaque run,
   règle 10). `python scripts/settle_bets.py --test` vérifie la grille.
 
-## Quota API (spec section 5, amendée le 20/07/2026 pour les classements)
+## Quota API : sync piloté par le calendrier (refonte du 20/07/2026)
 
-- Foot : 31 ligues actives × 3 dates (J-1 à J+1) = 93 + 5 classements
-  = **98 requêtes/jour** (quota 100). L'A-League australienne est
-  désactivée (`active = false`) pour garder cette marge.
-- Rugby : 7 ligues × 9 dates (J-1 à J+7) = 63 + 2 classements
-  = **65 requêtes/jour** (quota 100).
-- Classements (`/standings`) : uniquement les ligues `championnat`, en
-  rotation par ancienneté — chaque championnat de foot est rafraîchi tous
-  les ~2,5 jours, les 2 de rugby chaque jour. La saison passée en paramètre
-  est capturée automatiquement depuis les réponses `/matches`
-  (`leagues.current_season`) : le classement d'une ligue arrive donc après
-  son premier match synchronisé.
-- Pas de run élargi hebdomadaire en v1.
+Quota : 100 requêtes/jour par sous-API (foot et rugby séparés, reset à
+minuit UTC). Le plan fixe de la spec (chaque ligue interrogée sur toute la
+fenêtre chaque jour) est remplacé par un sync adaptatif :
+
+- **Sonde de découverte** : chaque ligue est sondée 1 fois/jour à J+9
+  (« tapis roulant » : toute date future passe une fois par J+9, donc tout
+  match annoncé au moins 9 jours à l'avance est découvert, tournois
+  compris). Une compétition sans activité (coupe entre deux tours, CAN ou
+  Mondial hors période) ne coûte donc que 1 requête/jour.
+- **Suivi** : à l'intérieur de la fenêtre (foot J-1 à J+1, rugby J-1 à
+  J+7), un jour n'est interrogé que si la base y connaît des matchs encore
+  à suivre. Les résultats de la veille sont donc récupérés chaque matin
+  (run à 6h UTC) pour toutes les compétitions.
+- **Classements** (`/standings`) : rafraîchis chaque matin pour les seuls
+  championnats ayant eu un match terminé depuis leur dernière mise à jour
+  (un classement ne bouge pas sans match), sur le quota restant du run.
+  La saison est capturée automatiquement depuis `/matches`
+  (`leagues.current_season`).
+- **Plafond dur** : le sync des matchs s'arrête avant d'entamer la réserve
+  (1 requête de sécurité + 1 par championnat actif pour les classements) ;
+  les ligues restantes passent au run suivant, championnats servis en
+  premier. Le dépassement de quota est impossible par construction.
+- Ordre de grandeur en pleine saison foot : ~30 sondes + ~20 suivis +
+  ~10 classements ≈ 60 requêtes/jour, avec un pic borné à 100.
+- **Premier démarrage** : chaque ligue jamais visitée reçoit un bootstrap
+  J-1..J+9 (11 requêtes) ; le plafond étale ce bootstrap sur ~3-4 jours,
+  championnats d'abord.
+- L'A-League reste désactivée (`active = false`, décision du 20/07/2026) ;
+  la réactiver si souhaité : `update leagues set active = true where
+  external_id = 160772;` — le sync adaptatif absorbe le surcoût.
+- Éviter de relancer manuellement un workflow le même jour UTC : chaque
+  run reconsomme du quota.
 
 ## Écarts / précisions par rapport à la spec
 

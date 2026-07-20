@@ -19,6 +19,10 @@ update leagues set active = false where external_id = 160772;
 alter table leagues add column current_season integer;
 -- Date du dernier rafraîchissement du classement (pilote la rotation)
 alter table leagues add column standings_synced_at timestamptz;
+-- Date du dernier passage du sync sur cette ligue (null = jamais visitée,
+-- déclenche le bootstrap J-1..J+9 ; ensuite le sync est piloté par le
+-- calendrier : sonde quotidienne J+9 + suivi des seuls jours de match)
+alter table leagues add column last_checked_at timestamptz;
 
 create table standings (
   id uuid primary key default gen_random_uuid(),
