@@ -1,11 +1,15 @@
-# Sync foot quotidien (section 5) : 32 ligues × 3 dates (J-1 à J+1)
-# = 96 requêtes/jour, sous le quota de 100/jour de la sous-API foot.
-# Pas de run élargi hebdomadaire en v1 (simplification finale retenue).
+# Sync foot quotidien : fenêtre J-1 à J+9, une requête par date (toutes
+# ligues à la fois), ~30 requêtes sur les 100/jour de la sous-API foot.
+#
+# Horaire : 2h45 UTC, soit 4h45 en heure française d'été (UTC+2) et 3h45
+# en hiver (UTC+1). Le run dure ~1 min : les résultats de la veille sont
+# donc en place avant 5h du matin, toute l'année. La minute décalée évite
+# les heures pleines, où GitHub retarde le plus souvent les tâches.
 name: sync-football
 
 on:
   schedule:
-    - cron: "0 6 * * *"
+    - cron: "45 2 * * *"
   workflow_dispatch:
 
 jobs:

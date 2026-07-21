@@ -23,7 +23,7 @@ sql/
   rpc_place_bet.sql      # fonction SQL de placement de pari (voir note ci-dessous)
   standings.sql          # classements officiels + colonnes de suivi du sync
   grants.sql             # droits des rôles (nouveaux projets Supabase)
-.github/workflows/       # sync-football.yml et sync-rugby.yml (cron 6h UTC)
+.github/workflows/       # sync-football.yml et sync-rugby.yml (cron 2h45 UTC)
 pwa/                     # la PWA (routes en hash : #/match/{id}, #/equipe/{id}…)
 ```
 
@@ -45,7 +45,8 @@ pwa/                     # la PWA (routes en hash : #/match/{id}, #/equipe/{id}�
 4. **PWA** : renseigner `pwa/js/config.js` (URL du projet + clé anon) et
    publier le dossier `pwa/` sur GitHub Pages.
 5. Lancer un premier run à la main : onglet Actions → `sync-football` →
-   *Run workflow* (idem rugby). Ensuite le cron tourne seul à 6h UTC.
+   *Run workflow* (idem rugby). Ensuite le cron tourne seul à 2h45 UTC,
+   soit 4h45 en heure française d'été : tout est à jour avant 5h.
 
 ## Système de pari : sur le score (remplace le 1x2 de la spec, 20/07/2026)
 
