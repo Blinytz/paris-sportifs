@@ -3,14 +3,12 @@
 
 Usage : python sync_matches.py --sport football|rugby
 
-Déroulé d'un run (sync piloté par le calendrier, décision du 20/07/2026) :
+Déroulé d'un run (sync par date, refonte du 21/07/2026) :
   1. charge model_settings (règle 10)
-  2. pour chaque ligue active du sport (championnats d'abord), appelle
-     /matches uniquement sur les dates utiles : sonde de découverte J+9
-     chaque jour + jours de la fenêtre de suivi (foot J-1..J+1, rugby
-     J-1..J+7) où des matchs sont connus en base. Une compétition sans
-     activité (coupe entre deux tours, tournoi hors période) ne coûte que
-     1 requête/jour. Plafond dur : dépassement de quota impossible.
+  2. pour chaque date de J-1 à J+9, appelle /matches?date=X SANS leagueId :
+     une requête (plus pagination) ramène les matchs de toutes les ligues,
+     on ne garde que les nôtres. Coût : quelques requêtes par jour au lieu
+     d'une par ligue. Plafond dur : dépassement de quota impossible.
   3. upsert équipes (règle 2) et matchs (règle 1)
   4. verrouille les cotes des matchs dont le coup d'envoi est passé (règle 4)
   5. applique le Elo + stats sur les matchs nouvellement terminés (règles 3 et 11)
@@ -34,15 +32,11 @@ from stats import update_stats_for_match
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("sync")
 
-# Fenêtres de SUIVI par sport (jours relatifs à aujourd'hui UTC) : à
-# l'intérieur, un jour n'est interrogé que si des matchs y sont connus
-WINDOWS = {"football": (-1, 1), "rugby": (-1, 7)}
-
-# Sonde de découverte quotidienne : chaque jour, chaque ligue est sondée à
-# J+9 (« tapis roulant » : toute date future passe une fois par J+9, donc
-# tout match annoncé au moins 9 jours à l'avance est découvert). Les
-# matchs plus proches sont ensuite suivis via la fenêtre ci-dessus.
-PROBE_OFFSET = 9
+# Fenêtre synchronisée chaque jour : J-1 (résultats de la veille) à J+9.
+# Une requête /matches?date=X couvre toutes les ligues à la fois (vérifié
+# le 21/07/2026), donc la fenêtre coûte quelques requêtes par jour, pas
+# une par ligue : ni bootstrap ni sonde nécessaires.
+FENETRE_JOURS = 9
 
 # Quota Highlightly : 100 requêtes/jour par sous-API. Réserve de sécurité
 # + réserve pour les classements (1 par championnat actif) ; le sync des
@@ -50,10 +44,6 @@ PROBE_OFFSET = 9
 QUOTA_JOURNALIER = 100
 QUOTA_RESERVE = 1
 
-# Ordre de passage sous contrainte de quota : les championnats d'abord
-# (paris + classements), l'international en dernier
-PRIORITE_CATEGORIE = {"championnat": 0, "coupe_continentale": 1,
-                      "coupe_nationale": 2, "international": 3}
 
 # Mapping state.description Highlightly -> status en base. Clés en
 # minuscules : l'API réelle renvoie « Not started » là où la spec disait
@@ -79,32 +69,13 @@ STATUS_MAP = {
 }
 
 
-def dates_pour_ligue(db, league, sport):
-    """Dates à interroger pour cette ligue aujourd'hui (sync piloté par le
-    calendrier) :
-    - jamais visitée -> bootstrap complet J-1..J+9 ;
-    - sinon : la sonde J+9, plus chaque jour de la fenêtre de suivi où la
-      base connaît un match encore à suivre (à venir, en cours, ou terminé
-      sans score exploitable). Une ligue sans activité coûte 1 requête/jour.
-    """
+def dates_fenetre():
+    """J-1 d'abord (résultats de la veille), puis J0, J+1... J+9. Cet
+    ordre garantit que sous contrainte de quota, ce sont les dates les
+    plus utiles qui passent en premier."""
     today = datetime.now(timezone.utc).date()
-    if league.get("last_checked_at") is None:
-        return [(today + timedelta(days=d)).isoformat()
-                for d in range(-1, PROBE_OFFSET + 1)]
-
-    first, last = WINDOWS[sport]
-    debut = (today + timedelta(days=first)).isoformat()
-    fin = (today + timedelta(days=last + 1)).isoformat()
-    rows = db.select("matches", {
-        "league_id": f"eq.{league['id']}",
-        "and": f"(kickoff_at.gte.{debut}T00:00:00Z,kickoff_at.lt.{fin}T00:00:00Z)",
-        "or": ("(status.in.(scheduled,live),"
-               "and(status.eq.finished,score_home.is.null))"),
-        "select": "kickoff_at",
-    })
-    dates = {r["kickoff_at"][:10] for r in rows}
-    dates.add((today + timedelta(days=PROBE_OFFSET)).isoformat())
-    return sorted(dates)
+    return [(today + timedelta(days=d)).isoformat()
+            for d in range(-1, FENETRE_JOURS + 1)]
 
 
 def map_status(raw):
@@ -161,61 +132,67 @@ class TeamCache:
                 self.by_ext[row["external_id"]] = row
 
 
-def sync_league(db, client, league, dates, team_cache):
-    """Synchronise une ligue sur la fenêtre de dates. Retourne la saison la
-    plus récente vue dans les réponses /matches (sert à /standings)."""
+def sync_date(db, client, date, ligues_par_ext, team_cache, saisons):
+    """Synchronise TOUS les matchs d'une date en une requête (plus
+    pagination), puis ne garde que ceux de nos ligues suivies.
+
+    `saisons` est enrichi au passage : league_id -> saison la plus récente
+    vue (paramètre de /standings)."""
     now_iso = datetime.now(timezone.utc).isoformat()
-    saison_max = None
-    for date in dates:
+    try:
+        api_matches = client.get_matches_by_date(date)
+    except Exception:
+        log.exception("Échec /matches date=%s ; on continue", date)
+        return 0
+
+    suivis = [m for m in api_matches
+              if (m.get("league") or {}).get("id") in ligues_par_ext]
+    if not suivis:
+        return 0
+
+    team_cache.ensure([m["homeTeam"] for m in suivis]
+                      + [m["awayTeam"] for m in suivis])
+
+    ext_ids = ",".join(str(m["id"]) for m in suivis)
+    existing = {row["external_id"] for row in db.select(
+        "matches", {"external_id": f"in.({ext_ids})", "select": "external_id"})}
+
+    ecrits = 0
+    for m in suivis:
+        league = ligues_par_ext[m["league"]["id"]]
+        saison = m["league"].get("season")
+        if saison and saison > saisons.get(league["id"], 0):
+            saisons[league["id"]] = saison
+        state = m.get("state") or {}
+        status = map_status(state.get("description") or "Not Started")
+        score_home, score_away = parse_score(state, status)
         try:
-            api_matches = client.get_matches(league["external_id"], date)
+            if m["id"] in existing:
+                # Règle 1 : ne jamais toucher kickoff_at ni les équipes
+                db.update("matches", {
+                    "status": status,
+                    "score_home": score_home,
+                    "score_away": score_away,
+                    "last_synced_at": now_iso,
+                }, {"external_id": f"eq.{m['id']}"})
+            else:
+                db.insert("matches", [{
+                    "league_id": league["id"],
+                    "external_id": m["id"],
+                    "home_team_id": team_cache.by_ext[m["homeTeam"]["id"]]["id"],
+                    "away_team_id": team_cache.by_ext[m["awayTeam"]["id"]]["id"],
+                    "kickoff_at": m["date"],
+                    "status": status,
+                    "score_home": score_home,
+                    "score_away": score_away,
+                    "last_synced_at": now_iso,
+                }])
+            ecrits += 1
         except Exception:
-            log.exception("Échec /matches ligue=%s date=%s — on continue",
-                          league["name"], date)
-            continue
-        if not api_matches:
-            continue
-
-        team_cache.ensure([m["homeTeam"] for m in api_matches]
-                          + [m["awayTeam"] for m in api_matches])
-
-        ext_ids = ",".join(str(m["id"]) for m in api_matches)
-        existing = {row["external_id"]: row for row in db.select(
-            "matches", {"external_id": f"in.({ext_ids})"})}
-
-        for m in api_matches:
-            saison = (m.get("league") or {}).get("season")
-            if saison and (saison_max is None or saison > saison_max):
-                saison_max = saison
-            state = m.get("state") or {}
-            status = map_status(state.get("description") or "Not Started")
-            score_home, score_away = parse_score(state, status)
-            try:
-                if m["id"] in existing:
-                    # Règle 1 : ne jamais toucher kickoff_at ni les équipes
-                    db.update("matches", {
-                        "status": status,
-                        "score_home": score_home,
-                        "score_away": score_away,
-                        "last_synced_at": now_iso,
-                    }, {"external_id": f"eq.{m['id']}"})
-                else:
-                    db.insert("matches", [{
-                        "league_id": league["id"],
-                        "external_id": m["id"],
-                        "home_team_id": team_cache.by_ext[m["homeTeam"]["id"]]["id"],
-                        "away_team_id": team_cache.by_ext[m["awayTeam"]["id"]]["id"],
-                        "kickoff_at": m["date"],
-                        "status": status,
-                        "score_home": score_home,
-                        "score_away": score_away,
-                        "last_synced_at": now_iso,
-                    }])
-            except Exception:
-                # Un match illisible (ex. statut hors contrainte CHECK) ne
-                # doit pas faire échouer tout le run
-                log.exception("Échec upsert match external_id=%s", m["id"])
-    return saison_max
+            # Un match illisible (ex. statut hors contrainte CHECK) ne
+            # doit pas faire échouer tout le run
+            log.exception("Échec upsert match external_id=%s", m["id"])
+    return ecrits
 
 
 def _standings_a_rafraichir(db, league):
@@ -393,30 +370,32 @@ def main():
     settings = load_settings(db)
     client = HighlightlyClient(sport)
     leagues = db.select("leagues", {"sport": f"eq.{sport}", "active": "is.true"})
-    leagues.sort(key=lambda l: (PRIORITE_CATEGORIE.get(l["category"], 9), l["name"]))
+    ligues_par_ext = {l["external_id"]: l for l in leagues}
 
     # Plafond dur du sync des matchs : quota - réserve - budget classements
     # (1 requête par championnat actif). Dépassement impossible.
     nb_championnats = sum(1 for l in leagues if l["category"] == "championnat")
     plafond_matchs = QUOTA_JOURNALIER - QUOTA_RESERVE - nb_championnats
-    log.info("Sync %s : %d ligues, plafond matchs %d requêtes, réserve "
-             "classements %d", sport, len(leagues), plafond_matchs, nb_championnats)
+    dates = dates_fenetre()
+    log.info("Sync %s : %d ligues suivies, %d dates (J-1 à J+%d), plafond "
+             "matchs %d requêtes, réserve classements %d",
+             sport, len(leagues), len(dates), FENETRE_JOURS,
+             plafond_matchs, nb_championnats)
 
     team_cache = TeamCache(db, sport)
-    now_iso = datetime.now(timezone.utc).isoformat()
-    for league in leagues:
-        dates = dates_pour_ligue(db, league, sport)
-        if client.request_count + len(dates) > plafond_matchs:
-            log.warning("Plafond quota atteint (%d requêtes) : ligue %s et "
-                        "suivantes reportées au prochain run",
-                        client.request_count, league["name"])
+    saisons, total_ecrits = {}, 0
+    for date in dates:
+        if client.request_count >= plafond_matchs:
+            log.warning("Plafond quota atteint (%d requêtes) : dates à partir "
+                        "du %s reportées au prochain run",
+                        client.request_count, date)
             break
-        saison = sync_league(db, client, league, dates, team_cache)
-        if saison and saison != league.get("current_season"):
-            db.update("leagues", {"current_season": saison},
-                      {"id": f"eq.{league['id']}"})
-        db.update("leagues", {"last_checked_at": now_iso},
-                  {"id": f"eq.{league['id']}"})
+        total_ecrits += sync_date(db, client, date, ligues_par_ext,
+                                  team_cache, saisons)
+    for league_id, saison in saisons.items():
+        db.update("leagues", {"current_season": saison},
+                  {"id": f"eq.{league_id}"})
+    log.info("%d matchs suivis écrits ou mis à jour", total_ecrits)
 
     lock_started_matches(db)
     apply_elo_and_stats(db, sport, settings)

@@ -50,6 +50,34 @@ class HighlightlyClient:
         r.raise_for_status()
         return r.json()
 
+    def get_matches_by_date(self, date, max_pages=8):
+        """GET /matches?date=YYYY-MM-DD SANS leagueId : renvoie les matchs
+        de TOUTES les ligues de cette date (vérifié le 21/07/2026 : 188
+        matchs / 28 ligues en une requête). C'est la façon économe de
+        synchroniser ; le filtrage sur nos ligues se fait ensuite en local.
+
+        max_pages borne le coût d'une journée très chargée. Retourne la
+        liste des matchs (le compteur de requêtes est tenu par le client).
+        """
+        out, offset = [], 0
+        for _ in range(max_pages):
+            r = self.session.get(
+                f"{self.base}/matches",
+                params={"date": date, "limit": PAGE_LIMIT, "offset": offset},
+                timeout=30,
+            )
+            self.request_count += 1
+            r.raise_for_status()
+            payload = r.json()
+            out.extend(payload.get("data", []))
+            total = payload.get("pagination", {}).get("totalCount", 0)
+            offset += PAGE_LIMIT
+            if offset >= total:
+                return out
+        log.warning("Date %s : plafond de %d pages atteint, matchs au-delà "
+                    "ignorés", date, max_pages)
+        return out
+
     def get_matches(self, league_external_id, date):
         """GET /matches?leagueId=X&date=YYYY-MM-DD, pagination comprise.
 
