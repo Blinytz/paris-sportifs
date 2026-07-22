@@ -53,7 +53,6 @@ function rendre(conteneur, paris, brouillons = [], solde = 0) {
     return;
   }
 
-  const total = aCollecter.reduce((s, p) => s + montantACollecter(p), 0);
 
   // Brouillons à venir vs brouillons rejetés au coup d'envoi
   const enAttenteValidation = brouillons.filter((d) => !d.rejected_at);
@@ -64,13 +63,14 @@ function rendre(conteneur, paris, brouillons = [], solde = 0) {
 
   conteneur.innerHTML = `
     <h1>Mes paris</h1>
-    ${enAttenteValidation.length ? bandeauEngagement(engage, solde, manque, total) : ''}
+    ${enAttenteValidation.length
+      ? bandeauEngagement(engage, solde, manque, aCollecter.length > 0) : ''}
     ${aCollecter.length ? `
       <div class="bandeau-collecte" id="bandeau-collecte">
         <div class="details">
-          <div class="montant">${eclats(total)} ✦</div>
-          <div class="sous">${aCollecter.length} pari${aCollecter.length > 1 ? 's' : ''}
+          <div class="montant">✦ ${aCollecter.length} gain${aCollecter.length > 1 ? 's' : ''}
             à récolter</div>
+          <div class="sous">D'un seul coup, ou match par match plus bas.</div>
         </div>
         <button class="btn-or" id="tout-collecter">Tout récolter</button>
       </div>
@@ -116,9 +116,9 @@ function bandeauEngagement(engage, solde, manque, aRecolter) {
           à venir mais ne possèdes que ${eclats(solde)} ✦. Au coup d'envoi,
           les paris sont validés dans l'ordre des matchs : les derniers
           seront refusés faute de solde.</div>
-        ${aRecolter > 0 ? `<div class="sous"><strong>Récolte tes
-          ${eclats(aRecolter)} ✦ en attente ci-dessus</strong> : ils ne
-          comptent dans ton solde qu'une fois encaissés.</div>` : ''}
+        ${aRecolter ? `<div class="sous"><strong>Récolte tes gains en
+          attente ci-dessus</strong> : ils ne comptent dans ton solde
+          qu'une fois encaissés.</div>` : ''}
       </div>
     </div>`;
 }

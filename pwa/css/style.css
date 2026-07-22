@@ -74,24 +74,6 @@ h3 { font-size: .85rem; margin: .2rem 0; color: var(--texte-doux); }
 }
 #solde.encaisse { transform: scale(1.16); }
 
-/* Gains en attente : visibles en permanence, distincts du solde car ces
-   Éclats ne sont pas encore possédés */
-#a-recolter {
-  display: inline-flex; align-items: center;
-  background: var(--vert-clair); border: 1px solid #a8ddbd;
-  color: var(--vert); font-weight: 700; font-size: .78rem;
-  border-radius: 999px; padding: .28rem .6rem; white-space: nowrap;
-  animation: respire 2.4s ease-in-out infinite;
-}
-#a-recolter[hidden] { display: none; }
-@keyframes respire {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-}
-@media (prefers-reduced-motion: reduce) {
-  #a-recolter { animation: none; }
-}
-
 #deconnexion {
   background: none; border: none; color: var(--texte-faible);
   font-size: 1.1rem; padding: .3rem; cursor: pointer; border-radius: 8px;
@@ -298,8 +280,8 @@ button:disabled { opacity: .55; cursor: default; }
   box-shadow: var(--ombre);
 }
 .bandeau-collecte .montant {
-  font-size: 1.6rem; font-weight: 800; color: var(--or-fonce);
-  font-variant-numeric: tabular-nums; line-height: 1.1;
+  font-size: 1.05rem; font-weight: 800; color: var(--or-fonce);
+  line-height: 1.2;
 }
 .bandeau-collecte .details { flex: 1; min-width: 9rem; }
 .bandeau-collecte .sous { font-size: .78rem; color: var(--or-fonce); opacity: .85; }
