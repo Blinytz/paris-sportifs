@@ -146,7 +146,7 @@ begin
                         selection, stake_eclats, odds_at_bet, potential_payout)
       values (v_draft.user_id, v_draft.match_id, v_draft.predicted_home,
               v_draft.predicted_away, v_selection, v_draft.stake_eclats,
-              v_odd, round(v_draft.stake_eclats * v_odd, 2))
+              v_odd, ceil(v_draft.stake_eclats * v_odd))
       returning id into v_bet_id;
 
       insert into eclats_ledger (user_id, amount, source, reference_id)

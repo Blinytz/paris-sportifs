@@ -3,6 +3,16 @@ name: probe-api
 
 on:
   workflow_dispatch:
+    inputs:
+      action:
+        description: "dates | leagues"
+        default: "dates"
+      sport:
+        description: "football | rugby (action=leagues)"
+        default: "rugby"
+      motif:
+        description: "filtre sur le nom (action=leagues)"
+        default: ""
 
 jobs:
   probe:
@@ -15,4 +25,4 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install requests
-      - run: python scripts/probe_api.py
+      - run: python scripts/probe_api.py "${{ inputs.action }}" "${{ inputs.sport }}" "${{ inputs.motif }}"

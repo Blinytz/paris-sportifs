@@ -107,6 +107,8 @@ main {
   content: ''; position: absolute; top: 0; width: 34px; height: 3px;
   border-radius: 0 0 3px 3px; background: var(--or);
 }
+/* [hidden] doit l'emporter sur le display:flex de la pastille */
+#onglets .badge[hidden] { display: none; }
 #onglets .badge {
   position: absolute; top: 6px; left: 50%; margin-left: 4px;
   background: var(--rouge); color: #fff; font-size: .6rem; font-weight: 800;

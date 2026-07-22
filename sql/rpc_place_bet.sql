@@ -94,7 +94,7 @@ begin
   insert into bets (user_id, match_id, predicted_home, predicted_away,
                     selection, stake_eclats, odds_at_bet, potential_payout)
   values (v_user, p_match_id, p_home, p_away,
-          v_selection, p_stake, v_odd, round(p_stake * v_odd, 2))
+          v_selection, p_stake, v_odd, ceil(p_stake * v_odd))
   returning id into v_bet_id;
 
   insert into eclats_ledger (user_id, amount, source, reference_id)

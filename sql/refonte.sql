@@ -49,8 +49,8 @@ begin
   loop
     -- Pari gagné : mise × cote × bonus. Pari remboursé : la mise.
     v_montant := case v_bet.status
-      when 'won' then round(v_bet.potential_payout
-                            * coalesce(v_bet.bonus_multiplier, 1), 2)
+      when 'won' then ceil(v_bet.potential_payout
+                           * coalesce(v_bet.bonus_multiplier, 1))
       else v_bet.stake_eclats
     end;
 

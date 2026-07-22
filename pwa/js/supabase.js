@@ -59,12 +59,21 @@ async function appel(path, options = {}, dejaRetente = false) {
   if (r.status === 401 && !dejaRetente && await rafraichir()) {
     return appel(path, options, true);
   }
+  // Une écriture en « return=minimal » répond sans corps (201 ou 204) :
+  // il faut donc lire le texte avant de tenter un JSON.parse, sinon
+  // « Unexpected end of JSON input ».
+  const texte = await r.text();
   if (!r.ok) {
     let message = `Erreur ${r.status}`;
-    try { message = (await r.json()).message || message; } catch { /* corps non JSON */ }
+    try { message = JSON.parse(texte).message || message; } catch { /* corps non JSON */ }
     throw new Error(message);
   }
-  return r.status === 204 ? null : r.json();
+  if (!texte) return null;
+  try {
+    return JSON.parse(texte);
+  } catch {
+    return null;
+  }
 }
 
 // Lecture PostgREST : rest('matches', { status: 'eq.scheduled', ... })

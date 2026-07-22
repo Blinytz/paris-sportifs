@@ -36,10 +36,10 @@ export function nombre(valeur, decimales = 0) {
   });
 }
 
-// Montant d'Éclats : décimales seulement si nécessaire
+// Les Éclats sont indivisibles : jamais de centimes, tout montant est
+// arrondi à l'unité supérieure (comme les calculs côté base de données).
 export function eclats(valeur) {
-  const n = Number(valeur) || 0;
-  return Number.isInteger(n) ? nombre(n) : nombre(n, 2);
+  return nombre(Math.ceil(Number(valeur) || 0));
 }
 
 // Clé de date locale (YYYY-MM-DD) d'un instant ISO
@@ -106,9 +106,10 @@ export function libelleBonus(pari, scoreHome, scoreAway) {
   return 'bonne issue';
 }
 
-// Gain effectif d'un pari gagné (mise × cote × bonus)
+// Gain effectif d'un pari gagné (mise × cote × bonus), en Éclats entiers
 export function gainPari(pari) {
-  return Number(pari.potential_payout) * (Number(pari.bonus_multiplier) || 1);
+  return Math.ceil(Number(pari.potential_payout)
+    * (Number(pari.bonus_multiplier) || 1));
 }
 
 export function lienClassementExterne(ligue) {
