@@ -3,7 +3,9 @@
 // Rien ne rejoint le portefeuille sans une action ici (ou sur la page
 // d'un match) : c'est la collecte manuelle.
 
-import { collecter, mesParis, tousLesBrouillons } from '../api.js';
+import {
+  collecter, mesParis, soldeEclats, supprimerBrouillon, tousLesBrouillons,
+} from '../api.js';
 import {
   blason, dateHeure, echapper, eclats, envoyerPieces, erreur, gainPari,
   libelleBonus, squelettes, toast, vide,
@@ -16,10 +18,10 @@ const LIBELLES = {
 export async function pageMesParis(conteneur) {
   conteneur.innerHTML = squelettes(4);
   try {
-    const [paris, brouillons] = await Promise.all([
-      mesParis(), tousLesBrouillons(),
+    const [paris, brouillons, solde] = await Promise.all([
+      mesParis(), tousLesBrouillons(), soldeEclats(),
     ]);
-    rendre(conteneur, paris, brouillons);
+    rendre(conteneur, paris, brouillons, solde);
   } catch (e) {
     conteneur.innerHTML = erreur(e);
   }
@@ -34,7 +36,7 @@ function nbPieces(montant) {
   return Math.max(4, Math.min(12, Math.round(montant / 90) + 4));
 }
 
-function rendre(conteneur, paris, brouillons = []) {
+function rendre(conteneur, paris, brouillons = [], solde = 0) {
   const aCollecter = paris.filter(
     (p) => !p.collected_at && (p.status === 'won' || p.status === 'void'));
   // Paris validés dont le match n'est pas terminé : en direct ou à venir
@@ -52,8 +54,17 @@ function rendre(conteneur, paris, brouillons = []) {
   }
 
   const total = aCollecter.reduce((s, p) => s + montantACollecter(p), 0);
+
+  // Brouillons à venir vs brouillons rejetés au coup d'envoi
+  const enAttenteValidation = brouillons.filter((d) => !d.rejected_at);
+  const rejetes = brouillons.filter((d) => d.rejected_at);
+  const engage = enAttenteValidation.reduce(
+    (s, d) => s + Number(d.stake_eclats), 0);
+  const manque = engage - solde;
+
   conteneur.innerHTML = `
     <h1>Mes paris</h1>
+    ${enAttenteValidation.length ? bandeauEngagement(engage, solde, manque, total) : ''}
     ${aCollecter.length ? `
       <div class="bandeau-collecte" id="bandeau-collecte">
         <div class="details">
@@ -73,10 +84,15 @@ function rendre(conteneur, paris, brouillons = []) {
     ${enAttente.length ? `<h2>Paris validés (${enAttente.length})</h2>
       ${enAttente.map((p) => cartePari(p)).join('')}` : ''}
 
-    ${brouillons.length ? `<h2>Pronostics enregistrés (${brouillons.length})</h2>
+    ${rejetes.length ? `<h2>Non validés (${rejetes.length})</h2>
+      <p class="faible">Ces pronostics n'ont pas pu devenir des paris au
+        coup d'envoi. Aucun Éclat n'a été engagé.</p>
+      ${rejetes.map(carteBrouillon).join('')}` : ''}
+
+    ${enAttenteValidation.length ? `<h2>Pronostics enregistrés (${enAttenteValidation.length})</h2>
       <p class="faible">Modifiables jusqu'au coup d'envoi, où ils
         deviennent des paris fermes.</p>
-      ${brouillons.map(carteBrouillon).join('')}` : ''}
+      ${enAttenteValidation.map(carteBrouillon).join('')}` : ''}
 
     ${historique.length ? `<h2>Historique</h2>
       ${historique.slice(0, 40).map((p) => cartePari(p)).join('')}` : ''}`;
@@ -84,9 +100,61 @@ function rendre(conteneur, paris, brouillons = []) {
   brancherCollecte(conteneur, aCollecter);
 }
 
-// Pronostic enregistré mais pas encore validé (le match n'a pas commencé)
+// Prévient AVANT le coup d'envoi si les mises engagées dépassent le
+// solde : sans cela, les paris seraient refusés un par un sans que
+// l'utilisateur puisse réagir.
+function bandeauEngagement(engage, solde, manque, aRecolter) {
+  if (manque <= 0) {
+    return `<p class="faible centre">${eclats(engage)} ✦ engagés sur tes
+      pronostics à venir, pour ${eclats(solde)} ✦ disponibles.</p>`;
+  }
+  return `
+    <div class="bandeau-alerte">
+      <div>
+        <strong>Il te manque ${eclats(manque)} ✦</strong>
+        <div class="sous">Tu as engagé ${eclats(engage)} ✦ sur tes pronostics
+          à venir mais ne possèdes que ${eclats(solde)} ✦. Au coup d'envoi,
+          les paris sont validés dans l'ordre des matchs : les derniers
+          seront refusés faute de solde.</div>
+        ${aRecolter > 0 ? `<div class="sous"><strong>Récolte tes
+          ${eclats(aRecolter)} ✦ en attente ci-dessus</strong> : ils ne
+          comptent dans ton solde qu'une fois encaissés.</div>` : ''}
+      </div>
+    </div>`;
+}
+
+// Pronostic enregistré (ou rejeté au coup d'envoi)
 function carteBrouillon(d) {
   const m = d.match;
+  if (d.rejected_at) {
+    return `
+      <div class="carte" data-brouillon="${d.id}">
+        <div class="match-entete">
+          <a class="competition" href="#/match/${d.match_id}">
+            ${m?.league?.sport === 'rugby' ? '🏉' : '⚽'} ${echapper(m?.league?.name || '')}
+          </a>
+          <span>${dateHeure(m?.kickoff_at)}</span>
+        </div>
+        <div class="match-corps">
+          <div class="equipe">${blason(m?.home)}
+            <span class="nom">${echapper(m?.home?.name)}</span></div>
+          <div class="bloc-score">
+            <div class="cases-score">
+              <div class="score-fige">${d.predicted_home}</div>
+              <span class="deux-points">:</span>
+              <div class="score-fige">${d.predicted_away}</div>
+            </div>
+          </div>
+          <div class="equipe">${blason(m?.away)}
+            <span class="nom">${echapper(m?.away?.name)}</span></div>
+        </div>
+        <div class="match-pied">
+          <span class="erreur">${echapper(d.rejected_reason || 'Non validé')}</span>
+          <button class="btn-fantome bouton-oublier"
+            data-match="${d.match_id}">Effacer</button>
+        </div>
+      </div>`;
+  }
   return `
     <a class="carte" href="#/match/${d.match_id}">
       <div class="match-entete">
@@ -167,14 +235,28 @@ function cartePari(p, recoltable = false) {
 function brancherCollecte(conteneur, aCollecter) {
   const rafraichir = async () => {
     try {
-      const [paris, brouillons] = await Promise.all([
-        mesParis(), tousLesBrouillons(),
+      const [paris, brouillons, solde] = await Promise.all([
+        mesParis(), tousLesBrouillons(), soldeEclats(),
       ]);
-      rendre(conteneur, paris, brouillons);
+      rendre(conteneur, paris, brouillons, solde);
     } catch (e) {
       conteneur.innerHTML = erreur(e);
     }
   };
+
+  // Effacer un pronostic non validé
+  conteneur.querySelectorAll('.bouton-oublier').forEach((bouton) => {
+    bouton.addEventListener('click', async () => {
+      bouton.disabled = true;
+      try {
+        await supprimerBrouillon(bouton.dataset.match);
+        rafraichir();
+      } catch (e) {
+        bouton.disabled = false;
+        toast(e.message, 'echec');
+      }
+    });
+  });
 
   // Récolte unitaire
   conteneur.querySelectorAll('.bouton-recolter').forEach((bouton) => {

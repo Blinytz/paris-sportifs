@@ -555,8 +555,16 @@ create table if not exists bet_drafts (
   predicted_away integer not null check (predicted_away between 0 and 199),
   stake_eclats numeric not null check (stake_eclats > 0),
   updated_at timestamptz not null default now(),
+  -- Renseignés si la validation au coup d'envoi a échoué (solde
+  -- insuffisant, cote manquante) : le brouillon reste alors visible dans
+  -- l'app avec sa raison, au lieu de disparaître sans explication.
+  rejected_at timestamptz,
+  rejected_reason text,
   unique (user_id, match_id)
 );
+
+alter table bet_drafts add column if not exists rejected_at timestamptz;
+alter table bet_drafts add column if not exists rejected_reason text;
 
 create index if not exists idx_drafts_user on bet_drafts (user_id);
 
@@ -584,12 +592,16 @@ create policy "drafts_update_own" on bet_drafts
         and m.status = 'scheduled' and m.kickoff_at > now()))
   with check (auth.uid() = user_id);
 
+-- Suppression : tant que le match n'a pas commencé, ou bien à tout
+-- moment pour se débarrasser d'un brouillon rejeté (accusé de réception)
 drop policy if exists "drafts_delete_own" on bet_drafts;
 create policy "drafts_delete_own" on bet_drafts
   for delete using (
-    auth.uid() = user_id and exists (
-      select 1 from matches m where m.id = match_id
-        and m.status = 'scheduled' and m.kickoff_at > now()));
+    auth.uid() = user_id and (
+      rejected_at is not null
+      or exists (
+        select 1 from matches m where m.id = match_id
+          and m.status = 'scheduled' and m.kickoff_at > now())));
 
 grant select, insert, update, delete on bet_drafts to authenticated;
 grant all on bet_drafts to service_role;
@@ -618,7 +630,8 @@ begin
     from bet_drafts d
     join matches m on m.id = d.match_id
     where m.kickoff_at <= now()
-    order by m.kickoff_at
+      and d.rejected_at is null
+    order by m.kickoff_at   -- premier match commencé, premier servi
     for update of d
   loop
     -- Cote figée avant le coup d'envoi (jamais une cote postérieure)
@@ -643,9 +656,23 @@ begin
     select coalesce(sum(amount), 0) into v_solde
     from eclats_ledger where user_id = v_draft.user_id;
 
-    -- Sans cote disponible ou sans solde suffisant, le brouillon est
-    -- simplement abandonné (aucun Éclat engagé, aucune dette créée).
-    if v_odd is not null and v_solde >= v_draft.stake_eclats then
+    -- Rien n'est jamais forcé : sans cote ou sans solde suffisant, aucun
+    -- Éclat n'est engagé et aucune dette n'est créée. Mais le brouillon
+    -- n'est pas effacé pour autant : il est marqué avec sa raison, pour
+    -- que l'app puisse l'expliquer au lieu de le faire disparaître.
+    if v_odd is null then
+      update bet_drafts
+      set rejected_at = now(),
+          rejected_reason = 'Aucune cote disponible pour ce match'
+      where id = v_draft.id;
+    elsif v_solde < v_draft.stake_eclats then
+      update bet_drafts
+      set rejected_at = now(),
+          rejected_reason = 'Solde insuffisant au coup d''envoi : '
+            || round(v_solde) || ' Éclats disponibles pour une mise de '
+            || round(v_draft.stake_eclats)
+      where id = v_draft.id;
+    else
       insert into bets (user_id, match_id, predicted_home, predicted_away,
                         selection, stake_eclats, odds_at_bet, potential_payout)
       values (v_draft.user_id, v_draft.match_id, v_draft.predicted_home,
@@ -658,9 +685,8 @@ begin
               'paris_sportifs_mise', v_bet_id);
 
       v_valides := v_valides + 1;
+      delete from bet_drafts where id = v_draft.id;
     end if;
-
-    delete from bet_drafts where id = v_draft.id;
   end loop;
 
   return v_valides;

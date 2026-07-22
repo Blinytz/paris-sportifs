@@ -286,6 +286,16 @@ button:disabled { opacity: .55; cursor: default; }
 .bandeau-collecte .details { flex: 1; min-width: 9rem; }
 .bandeau-collecte .sous { font-size: .78rem; color: var(--or-fonce); opacity: .85; }
 
+/* Alerte d'engagement supérieur au solde */
+.bandeau-alerte {
+  background: var(--rouge-clair); border: 1px solid #f0b4b0;
+  border-radius: var(--rayon); padding: .9rem; margin-bottom: .9rem;
+  color: var(--rouge); font-size: .9rem;
+}
+.bandeau-alerte .sous {
+  color: var(--texte-doux); font-size: .8rem; margin-top: .35rem;
+}
+
 /* Pièce animée qui file vers le solde */
 .piece {
   position: fixed; z-index: 60; pointer-events: none;
