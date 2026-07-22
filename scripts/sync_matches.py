@@ -69,6 +69,25 @@ STATUS_MAP = {
 }
 
 
+def dates_en_attente_de_resultat(db, sport):
+    """Dates des matchs dont on attend encore le résultat : coup d'envoi
+    passé (avec une marge) et pas encore de score exploitable en base.
+
+    Sert au mode « résultats » (run léger toutes les 2 h) : s'il n'y a
+    rien à récupérer, aucune requête API n'est consommée."""
+    maintenant = datetime.now(timezone.utc)
+    # Un match reste « en attente » jusqu'à 2 jours après son coup d'envoi
+    # (au-delà, l'API ne le finalisera plus : inutile de le repayer)
+    rows = db.select("matches", {
+        "select": "kickoff_at,league:leagues!inner(sport)",
+        "league.sport": f"eq.{sport}",
+        "kickoff_at": f"lt.{maintenant.isoformat()}",
+        "and": (f"(kickoff_at.gt.{(maintenant - timedelta(days=2)).isoformat()},"
+                "or(status.neq.finished,score_home.is.null))"),
+    })
+    return sorted({r["kickoff_at"][:10] for r in rows})
+
+
 def dates_fenetre():
     """J-1 d'abord (résultats de la veille), puis J0, J+1... J+9. Cet
     ordre garantit que sous contrainte de quota, ce sont les dates les
@@ -363,8 +382,13 @@ def generate_upcoming_odds(db, sport, settings):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sport", required=True, choices=("football", "rugby"))
+    parser.add_argument(
+        "--mode", default="complet", choices=("complet", "resultats"),
+        help="complet : fenêtre J-1 à J+9 (1 fois/jour). resultats : "
+             "seulement les dates dont on attend encore un score (run léger "
+             "toutes les 2 h ; 0 requête s'il n'y a rien à récupérer).")
     args = parser.parse_args()
-    sport = args.sport
+    sport, mode = args.sport, args.mode
 
     db = SupabaseDB()
     settings = load_settings(db)
@@ -376,11 +400,20 @@ def main():
     # (1 requête par championnat actif). Dépassement impossible.
     nb_championnats = sum(1 for l in leagues if l["category"] == "championnat")
     plafond_matchs = QUOTA_JOURNALIER - QUOTA_RESERVE - nb_championnats
-    dates = dates_fenetre()
-    log.info("Sync %s : %d ligues suivies, %d dates (J-1 à J+%d), plafond "
-             "matchs %d requêtes, réserve classements %d",
-             sport, len(leagues), len(dates), FENETRE_JOURS,
-             plafond_matchs, nb_championnats)
+    if mode == "resultats":
+        dates = dates_en_attente_de_resultat(db, sport)
+        if not dates:
+            log.info("Mode résultats : aucun match en attente de score, "
+                     "aucune requête API consommée")
+            return
+        log.info("Mode résultats %s : %d date(s) en attente (%s)",
+                 sport, len(dates), ", ".join(dates))
+    else:
+        dates = dates_fenetre()
+        log.info("Sync %s : %d ligues suivies, %d dates (J-1 à J+%d), plafond "
+                 "matchs %d requêtes, réserve classements %d",
+                 sport, len(leagues), len(dates), FENETRE_JOURS,
+                 plafond_matchs, nb_championnats)
 
     team_cache = TeamCache(db, sport)
     saisons, total_ecrits = {}, 0
@@ -399,8 +432,11 @@ def main():
 
     lock_started_matches(db)
     apply_elo_and_stats(db, sport, settings)
-    generate_upcoming_odds(db, sport, settings)
-    sync_standings(db, client, sport, team_cache)
+    if mode == "complet":
+        # Les cotes ne se régénèrent que dans le run complet : un run léger
+        # ne doit pas faire bouger les cotes entre deux paris de la journée
+        generate_upcoming_odds(db, sport, settings)
+        sync_standings(db, client, sport, team_cache)
     log.info("Sync %s terminé : %d requêtes Highlightly consommées sur %d",
              sport, client.request_count, QUOTA_JOURNALIER)
 

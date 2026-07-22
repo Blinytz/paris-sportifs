@@ -113,6 +113,21 @@ export function mesParisSurMatch(matchId) {
   return rest('bets', { match_id: `eq.${matchId}`, order: 'placed_at.desc' });
 }
 
+// Paris en cours sur une liste de matchs -> Map match_id -> [paris]
+export async function mesParisSurMatchs(matchIds) {
+  if (!matchIds.length) return new Map();
+  const rows = await rest('bets', {
+    match_id: `in.(${matchIds.join(',')})`,
+    order: 'placed_at.desc',
+  });
+  const parMatch = new Map();
+  for (const b of rows) {
+    if (!parMatch.has(b.match_id)) parMatch.set(b.match_id, []);
+    parMatch.get(b.match_id).push(b);
+  }
+  return parMatch;
+}
+
 // Règle 8 : le placement passe par la fonction SQL place_bet (atomique,
 // vérifie solde + verrouillage côté serveur). On parie un SCORE ; l'issue
 // et la cote appliquée sont dérivées côté serveur.

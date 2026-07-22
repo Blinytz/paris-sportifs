@@ -1,0 +1,38 @@
+# Récupération fréquente des résultats + règlement des paris.
+#
+# Pourquoi : GitHub ne garantit pas l'heure des tâches planifiées (retard
+# de 2h50 constaté le 22/07/2026 sur un cron de 2h45 UTC). Avec un passage
+# toutes les 2 heures, un retard ponctuel n'a plus d'impact et un match
+# terminé est réglé au plus tard ~2 h après.
+#
+# Coût quota : le mode « resultats » n'interroge que les dates dont un
+# score manque encore en base, et ne consomme AUCUNE requête API quand il
+# n'y a rien à récupérer (cas de la majorité des passages).
+name: sync-resultats
+
+on:
+  schedule:
+    - cron: "25 */2 * * *"
+  workflow_dispatch:
+
+jobs:
+  resultats:
+    runs-on: ubuntu-latest
+    env:
+      HIGHLIGHTLY_API_KEY: ${{ secrets.HIGHLIGHTLY_API_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - name: Résultats foot
+        run: python scripts/sync_matches.py --sport football --mode resultats
+      - name: Résultats rugby
+        if: always()
+        run: python scripts/sync_matches.py --sport rugby --mode resultats
+      - name: Règlement des paris
+        if: always()
+        run: python scripts/settle_bets.py

@@ -1,8 +1,17 @@
-// Accueil : calendrier des matchs à venir, filtrable par sport et
-// compétition, avec les dernières cotes générées.
+// Accueil : paris rapides. Chaque match à venir porte deux champs de
+// score ; dès que les deux sont remplis, le pari part automatiquement
+// avec la mise par défaut (model_settings.default_stake).
+// Pour ajuster la mise ou voir les stats, on passe par la page du match.
 
-import { dernieresCotes, listeLigues, prochainsMatchs } from '../api.js';
+import {
+  dernieresCotes, listeLigues, lireReglages, mesParisSurMatchs,
+  placerPari, prochainsMatchs,
+} from '../api.js';
 import { chargement, echapper, erreur, jour, nombre } from '../ui.js';
+
+// Délai après la dernière frappe avant d'envoyer le pari : laisse le
+// temps de saisir un score à deux chiffres (rugby) ou de se corriger.
+const DELAI_ENVOI = 1200;
 
 const filtres = { sport: '', leagueId: '' };
 let liguesCache = null;
@@ -18,10 +27,17 @@ export async function pageAccueil(conteneur) {
 }
 
 async function rendre(conteneur) {
-  const matchs = await prochainsMatchs(filtres.leagueId
-    ? { leagueId: filtres.leagueId }
-    : { sport: filtres.sport || undefined });
-  const cotes = await dernieresCotes(matchs.map((m) => m.id));
+  const [matchs, reglages] = await Promise.all([
+    prochainsMatchs(filtres.leagueId
+      ? { leagueId: filtres.leagueId }
+      : { sport: filtres.sport || undefined }),
+    lireReglages(),
+  ]);
+  const ids = matchs.map((m) => m.id);
+  const [cotes, paris] = await Promise.all([
+    dernieresCotes(ids), mesParisSurMatchs(ids),
+  ]);
+  const mise = Number(reglages?.default_stake) || 100;
 
   const liguesVisibles = liguesCache.filter(
     (l) => !filtres.sport || l.sport === filtres.sport);
@@ -30,7 +46,6 @@ async function rendre(conteneur) {
       ${echapper(l.name)}${l.country && l.country !== 'World' ? ` (${echapper(l.country)})` : ''}
     </option>`).join('');
 
-  // Regroupement par jour
   const parJour = new Map();
   for (const m of matchs) {
     const cle = jour(m.kickoff_at);
@@ -50,10 +65,13 @@ async function rendre(conteneur) {
         ${optionsLigues}
       </select>
     </div>
+    <p class="muet">Pari rapide : saisis un score, la mise de
+      <strong>${nombre(mise)} ✦</strong> part toute seule.
+      Pour miser autrement, ouvre le match.</p>
     ${matchs.length === 0 ? '<p class="muet">Aucun match à venir dans la fenêtre synchronisée.</p>' : ''}
     ${[...parJour.entries()].map(([libelle, liste]) => `
       <h2 class="jour">${echapper(libelle)}</h2>
-      ${liste.map((m) => carteMatch(m, cotes.get(m.id))).join('')}
+      ${liste.map((m) => carteMatch(m, cotes.get(m.id), paris.get(m.id))).join('')}
     `).join('')}`;
 
   conteneur.querySelector('#filtre-sport').addEventListener('change', (evt) => {
@@ -65,27 +83,96 @@ async function rendre(conteneur) {
     filtres.leagueId = evt.target.value;
     rendre(conteneur);
   });
+  brancherParisRapides(conteneur, mise);
 }
 
-function carteMatch(m, cote) {
+function carteMatch(m, cote, parisDuMatch) {
   const heure = new Date(m.kickoff_at).toLocaleTimeString('fr-FR',
     { hour: '2-digit', minute: '2-digit' });
+  const dejaParie = (parisDuMatch || [])
+    .map((p) => `${p.predicted_home}-${p.predicted_away}`).join(', ');
   return `
-    <a class="carte carte-match" href="#/match/${m.id}">
+    <div class="carte carte-match" data-match="${m.id}" data-parie="${dejaParie ? '1' : ''}">
       <div class="carte-match-entete">
-        <span class="muet">${echapper(m.league?.name || '')} · ${heure}</span>
+        <a class="muet" href="#/match/${m.id}">${echapper(m.league?.name || '')} · ${heure}</a>
         <span class="pastille">${m.league?.sport === 'rugby' ? '🏉' : '⚽'}</span>
       </div>
       <div class="carte-match-equipes">
-        <span>${echapper(m.home?.name)}</span>
+        <a href="#/match/${m.id}">${echapper(m.home?.name)}</a>
         <span class="muet">vs</span>
-        <span>${echapper(m.away?.name)}</span>
+        <a href="#/match/${m.id}">${echapper(m.away?.name)}</a>
       </div>
       ${cote ? `
       <div class="carte-match-cotes">
         <span>1 · ${nombre(cote.home_odds, 2)}</span>
         ${cote.draw_odds ? `<span>N · ${nombre(cote.draw_odds, 2)}</span>` : ''}
         <span>2 · ${nombre(cote.away_odds, 2)}</span>
+      </div>
+      <div class="rangee-rapide">
+        <input type="number" class="score-rapide" data-camp="home" min="0" max="199"
+               inputmode="numeric" aria-label="Score ${echapper(m.home?.name)}">
+        <span class="tiret">-</span>
+        <input type="number" class="score-rapide" data-camp="away" min="0" max="199"
+               inputmode="numeric" aria-label="Score ${echapper(m.away?.name)}">
+        <span class="retour-rapide muet">${dejaParie ? `Parié : ${echapper(dejaParie)}` : ''}</span>
       </div>` : '<div class="muet">Cotes pas encore générées</div>'}
-    </a>`;
+    </div>`;
+}
+
+function brancherParisRapides(conteneur, mise) {
+  for (const carte of conteneur.querySelectorAll('.carte-match[data-match]')) {
+    const champs = carte.querySelectorAll('.score-rapide');
+    if (champs.length !== 2) continue;
+    const retour = carte.querySelector('.retour-rapide');
+    let minuteur = null;
+
+    const lire = () => [...champs].map((c) => c.value.trim());
+
+    const envoyer = async () => {
+      clearTimeout(minuteur);
+      const [ph, pa] = lire();
+      if (ph === '' || pa === '') return;
+      champs.forEach((c) => { c.disabled = true; });
+      retour.textContent = 'Placement…';
+      retour.className = 'retour-rapide muet';
+      try {
+        await placerPari(carte.dataset.match, Number(ph), Number(pa), mise);
+        retour.textContent = `✓ ${ph}-${pa} pour ${nombre(mise)} ✦`;
+        retour.className = 'retour-rapide succes';
+        carte.dataset.parie = '1';
+        champs.forEach((c) => { c.value = ''; });
+        window.dispatchEvent(new Event('eclats-changes'));
+      } catch (e) {
+        retour.textContent = `Refusé : ${e.message}`;
+        retour.className = 'retour-rapide erreur';
+      } finally {
+        champs.forEach((c) => { c.disabled = false; });
+      }
+    };
+
+    const planifier = () => {
+      clearTimeout(minuteur);
+      const [ph, pa] = lire();
+      if (ph === '' || pa === '') {
+        retour.textContent = '';
+        retour.className = 'retour-rapide muet';
+        return;
+      }
+      retour.textContent = `Pari ${ph}-${pa} dans un instant…`;
+      retour.className = 'retour-rapide muet';
+      minuteur = setTimeout(envoyer, DELAI_ENVOI);
+    };
+
+    champs.forEach((c) => {
+      c.addEventListener('input', planifier);
+      // Entrée : envoi immédiat, sans attendre le délai
+      c.addEventListener('keydown', (evt) => {
+        if (evt.key === 'Enter') {
+          evt.preventDefault();
+          c.blur();
+          envoyer();
+        }
+      });
+    });
+  }
 }

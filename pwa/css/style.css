@@ -154,6 +154,20 @@ label input { width: 100%; margin-top: 0.2rem; }
 .champ-reglage input { max-width: 10rem; }
 .aide { margin: 0.4rem 0 0; }
 
+/* Paris rapides (accueil) */
+.rangee-rapide {
+  display: flex; align-items: center; gap: 0.4rem;
+  margin-top: 0.5rem; flex-wrap: wrap;
+}
+.rangee-rapide .score-rapide {
+  width: 3.2rem; text-align: center; font-weight: 700; padding: 0.35rem;
+}
+.rangee-rapide .tiret { color: var(--texte-muet); }
+.retour-rapide { flex: 1; min-width: 8rem; font-size: 0.8rem; }
+.retour-rapide.succes { color: var(--vert); }
+.retour-rapide.erreur { color: var(--rouge); }
+.carte-match[data-parie="1"] { border-color: var(--accent-fonce); }
+
 /* Classement */
 .tableau-defilant { overflow-x: auto; padding: 0.4rem; }
 table.classement { border-collapse: collapse; width: 100%; font-size: 0.9rem; }

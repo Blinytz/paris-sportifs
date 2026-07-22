@@ -157,6 +157,8 @@ create table model_settings (
   bonus_ecart numeric not null default 1.5,
   bonus_ecart_nul numeric not null default 1.25,
   bonus_score_exact numeric not null default 2.0,
+  -- Mise appliquée automatiquement par les paris rapides (accueil)
+  default_stake numeric not null default 100,
   form_window_size integer not null default 5,
   updated_at timestamptz not null default now()
 );
