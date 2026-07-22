@@ -1,7 +1,7 @@
 // Requêtes métier vers Supabase (lecture des données sportives, paris,
 // solde d'Éclats, réglages du modèle).
 
-import { rest, patch, rpc, utilisateur } from './supabase.js';
+import { effacer, patch, rest, rpc, upsert, utilisateur } from './supabase.js';
 
 // Embeds PostgREST réutilisés : les deux FK équipes de `matches` doivent
 // être désambiguïsées par le nom de contrainte.
@@ -24,6 +24,49 @@ export function matchsDuJour(dateLocale, { sport, leagueId } = {}) {
     params['league.sport'] = `eq.${sport}`;
   }
   return rest('matches', params);
+}
+
+// ---------- Brouillons de pronostic ----------
+// Un score saisi est enregistré aussitôt, mais le pari n'est validé (et
+// la mise débitée) qu'au coup d'envoi, par la fonction serveur
+// validate_due_drafts. Tant que le match n'a pas commencé, le brouillon
+// reste modifiable depuis n'importe quelle page.
+
+export async function brouillonsSurMatchs(matchIds) {
+  if (!matchIds.length) return new Map();
+  const rows = await rest('bet_drafts', {
+    match_id: `in.(${matchIds.join(',')})`,
+  });
+  return new Map(rows.map((d) => [d.match_id, d]));
+}
+
+export async function lireBrouillon(matchId) {
+  const rows = await rest('bet_drafts', { match_id: `eq.${matchId}` });
+  return rows[0] || null;
+}
+
+export function tousLesBrouillons() {
+  return rest('bet_drafts', {
+    select: `*,match:matches(${EMBED_MATCH})`,
+    order: 'updated_at.desc',
+  });
+}
+
+// Enregistre (ou met à jour) le pronostic. La RLS refuse l'écriture dès
+// que le match a commencé : le score est alors figé.
+export function enregistrerBrouillon(matchId, home, away, mise) {
+  return upsert('bet_drafts', {
+    user_id: utilisateur()?.id,
+    match_id: matchId,
+    predicted_home: home,
+    predicted_away: away,
+    stake_eclats: mise,
+    updated_at: new Date().toISOString(),
+  }, 'user_id,match_id');
+}
+
+export function supprimerBrouillon(matchId) {
+  return effacer('bet_drafts', { match_id: `eq.${matchId}` });
 }
 
 // Paris réglés en attente de collecte (gains et remboursements)

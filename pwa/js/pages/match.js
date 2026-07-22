@@ -3,14 +3,15 @@
 // « Classement ». Un pari gagné se récolte aussi depuis ici.
 
 import {
-  classementLigue, collecter, confrontations, dernieresCotes, lireMatch,
-  lireReglages, matchsEquipe, mesParisSurMatch, placerPari,
-  positionsDansLigue, statsCompetition, statsGlobales,
+  classementLigue, collecter, confrontations, dernieresCotes,
+  enregistrerBrouillon, lireBrouillon, lireMatch, lireReglages, matchsEquipe,
+  mesParisSurMatch, positionsDansLigue, statsCompetition, statsGlobales,
 } from '../api.js';
+import { brancherCases, casesScore } from '../saisie.js';
 import {
   badgesForme, blason, dateHeure, echapper, eclats, envoyerPieces, erreur,
   formeDepuisMatchs, gainPari, libelleBonus, nombre, ordinal, probaImplicite,
-  squelettes, toast, vibrer,
+  squelettes, toast,
 } from '../ui.js';
 
 const ISSUES = { home: 'domicile', draw: 'nul', away: 'extérieur' };
@@ -30,21 +31,23 @@ export async function pageMatch(conteneur, matchId) {
         + '<p>Match introuvable.</p></div>';
       return;
     }
-    const [cotesMap, paris, reglages] = await Promise.all([
+    const [cotesMap, paris, reglages, brouillon] = await Promise.all([
       dernieresCotes([match.id],
         match.status === 'finished' ? match.kickoff_at : null),
       mesParisSurMatch(match.id),
       lireReglages(),
+      lireBrouillon(match.id),
     ]);
-    rendre(conteneur, match, cotesMap.get(match.id), paris, reglages);
+    rendre(conteneur, match, cotesMap.get(match.id), paris, reglages, brouillon);
   } catch (e) {
     conteneur.innerHTML = erreur(e);
   }
 }
 
-function rendre(conteneur, match, cotes, paris, reglages) {
+function rendre(conteneur, match, cotes, paris, reglages, brouillon) {
   const termine = match.status === 'finished' && match.score_home !== null;
-  const ouvert = match.status === 'scheduled' && !match.odds_locked
+  const enCours = match.status === 'live';
+  const ouvert = match.status === 'scheduled'
     && new Date(match.kickoff_at) > new Date();
   const estChampionnat = match.league?.category === 'championnat';
 
@@ -61,9 +64,9 @@ function rendre(conteneur, match, cotes, paris, reglages) {
         </a>
         <div class="bloc-score">
           <div class="cases-score">
-            <div class="score-fige">${termine ? match.score_home : '?'}</div>
+            <div class="score-fige">${termine || enCours ? match.score_home ?? '?' : '?'}</div>
             <span class="deux-points">:</span>
-            <div class="score-fige">${termine ? match.score_away : '?'}</div>
+            <div class="score-fige">${termine || enCours ? match.score_away ?? '?' : '?'}</div>
           </div>
           ${cotes ? `<div class="cotes-mini">
             <span>${nombre(cotes.home_odds, 2)}</span>
@@ -80,8 +83,7 @@ function rendre(conteneur, match, cotes, paris, reglages) {
 
     ${paris.length ? blocMesParis(match, paris) : ''}
 
-    ${ouvert && cotes ? blocPari(match, cotes, reglages)
-      : ouvert ? '<p class="muet centre">Cotes pas encore générées.</p>' : ''}
+    ${ouvert ? blocPronostic(match, cotes, reglages, brouillon) : ''}
 
     <div class="onglets-internes">
       <button data-onglet="avant" class="${ongletActif === 'avant' ? 'actif' : ''}">
@@ -101,7 +103,7 @@ function rendre(conteneur, match, cotes, paris, reglages) {
     });
   });
 
-  if (ouvert && cotes) brancherPari(conteneur, match, cotes, reglages);
+  if (ouvert) brancherPronostic(conteneur, match, cotes, reglages, brouillon);
   brancherRecolte(conteneur);
   chargerOnglet(conteneur, match, cotes, reglages);
 }
@@ -165,51 +167,51 @@ function brancherRecolte(conteneur) {
 
 // ---------- Formulaire de pari (mise libre) ----------
 
-function blocPari(match, cotes, reglages) {
-  const mise = Number(reglages?.default_stake) || 100;
+function blocPronostic(match, cotes, reglages, brouillon) {
+  const mise = Number(brouillon?.stake_eclats)
+    || Number(reglages?.default_stake) || 100;
+  const debut = new Date(match.kickoff_at).toLocaleString('fr-FR',
+    { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
   return `
     <div class="carte">
-      <h2 style="margin-top:0">Parier sur le score</h2>
+      <h2 style="margin-top:0">Mon pronostic</h2>
       <div class="match-corps">
         <span class="faible centre">${echapper(match.home?.name)}</span>
-        <div class="cases-score">
-          <input class="case-score" id="pari-h" type="number" min="0" max="199"
-                 inputmode="numeric" aria-label="Score domicile">
-          <span class="deux-points">:</span>
-          <input class="case-score" id="pari-a" type="number" min="0" max="199"
-                 inputmode="numeric" aria-label="Score extérieur">
-        </div>
+        ${casesScore(match, brouillon)}
         <span class="faible centre">${echapper(match.away?.name)}</span>
       </div>
       <div class="rangee-mise" style="margin-top:.8rem">
         <label>Mise en Éclats
           <input type="number" id="pari-mise" min="1" step="10" value="${mise}"></label>
-        <button class="btn-or" id="pari-envoyer">Placer</button>
       </div>
-      <div class="apercu-gains" id="apercu-gains" hidden>
+      <div class="apercu-gains" id="apercu-gains" ${brouillon ? '' : 'hidden'}>
         <div>Bonne issue<strong id="gain-base">?</strong></div>
         <div id="case-ecart">Bon écart<strong id="gain-ecart">?</strong></div>
         <div>Score exact<strong id="gain-exact">?</strong></div>
       </div>
       <p class="faible" id="retour-pari"></p>
+      <p class="faible">🔒 Modifiable jusqu'au coup d'envoi
+        (${echapper(debut)}), où la mise sera débitée et le pari validé.</p>
     </div>`;
 }
 
-function brancherPari(conteneur, match, cotes, reglages) {
-  const h = conteneur.querySelector('#pari-h');
-  const a = conteneur.querySelector('#pari-a');
+function brancherPronostic(conteneur, match, cotes, reglages, brouillon) {
   const miseChamp = conteneur.querySelector('#pari-mise');
-  const bouton = conteneur.querySelector('#pari-envoyer');
   const retour = conteneur.querySelector('#retour-pari');
   const apercu = conteneur.querySelector('#apercu-gains');
-  const bonusEcart = Number(reglages?.bonus_ecart) || 1.5;
+  const estRugby = match.league?.sport === 'rugby';
+  const bonusEcart = estRugby
+    ? (Number(reglages?.bonus_ecart_rugby) || 1.5)
+    : (Number(reglages?.bonus_ecart) || 1.5);
   const bonusNul = Number(reglages?.bonus_ecart_nul) || 1.25;
-  const bonusExact = Number(reglages?.bonus_score_exact) || 2;
+  const bonusExact = estRugby
+    ? (Number(reglages?.bonus_score_exact_rugby) || 10)
+    : (Number(reglages?.bonus_score_exact) || 2);
+  const champs = [...conteneur.querySelectorAll('.cases-score .case-score')];
 
   const majApercu = () => {
-    const [ph, pa] = [h.value.trim(), a.value.trim()];
-    [h, a].forEach((c) => c.classList.toggle('rempli', c.value.trim() !== ''));
-    if (ph === '' || pa === '') { apercu.hidden = true; return; }
+    const [ph, pa] = champs.map((c) => c.value.trim());
+    if (ph === '' || pa === '' || !cotes) { apercu.hidden = true; return; }
     const issue = Number(ph) > Number(pa) ? 'home'
       : Number(ph) < Number(pa) ? 'away' : 'draw';
     const cote = issue === 'home' ? cotes.home_odds
@@ -220,39 +222,46 @@ function brancherPari(conteneur, match, cotes, reglages) {
       return;
     }
     const base = (Number(miseChamp.value) || 0) * Number(cote);
-    const facteurEcart = issue === 'draw' ? bonusNul : bonusEcart;
+    const facteurEcart = (!estRugby && issue === 'draw') ? bonusNul : bonusEcart;
     apercu.hidden = false;
     conteneur.querySelector('#gain-base').textContent = `${eclats(base)} ✦`;
     conteneur.querySelector('#gain-ecart').textContent = `${eclats(base * facteurEcart)} ✦`;
     conteneur.querySelector('#gain-exact').textContent = `${eclats(base * bonusExact)} ✦`;
     conteneur.querySelector('#case-ecart').firstChild.textContent =
-      issue === 'draw' ? `Bon écart ×${nombre(facteurEcart, 2)} ` : 'Bon écart ';
+      estRugby ? 'Bonne tranche d\'écart ' : 'Bon écart ';
     retour.textContent = `Issue : ${ISSUES[issue]} · cote ${nombre(cote, 2)}`;
   };
 
-  [h, a, miseChamp].forEach((c) => c.addEventListener('input', majApercu));
-
-  bouton.addEventListener('click', async () => {
-    const [ph, pa] = [h.value.trim(), a.value.trim()];
-    if (ph === '' || pa === '') {
-      retour.textContent = 'Indique un score pronostiqué.';
-      return;
-    }
-    bouton.disabled = true;
-    bouton.textContent = '…';
-    try {
-      await placerPari(match.id, Number(ph), Number(pa), Number(miseChamp.value));
-      vibrer(18);
-      toast(`Pari ${ph}-${pa} placé`, 'succes');
-      window.dispatchEvent(new Event('eclats-changes'));
-      pageMatch(conteneur, match.id);
-    } catch (e) {
-      retour.textContent = `Refusé : ${e.message}`;
-      toast(e.message, 'echec');
-      bouton.disabled = false;
-      bouton.textContent = 'Placer';
-    }
+  // Les cases enregistrent le brouillon ; la mise saisie ici l'accompagne
+  brancherCases(conteneur, {
+    mise: Number(miseChamp.value) || 100,
+    surEtat: (texte, classe) => {
+      if (classe === 'ok') toast('Pronostic enregistré', 'succes');
+      retour.textContent = texte;
+    },
+    surChangement: majApercu,
   });
+  champs.forEach((c) => c.addEventListener('input', majApercu));
+
+  // Changer la mise réenregistre le brouillon existant
+  let minuteurMise = null;
+  miseChamp.addEventListener('input', () => {
+    majApercu();
+    clearTimeout(minuteurMise);
+    minuteurMise = setTimeout(async () => {
+      const [ph, pa] = champs.map((c) => c.value.trim());
+      if (ph === '' || pa === '') return;
+      try {
+        await enregistrerBrouillon(match.id, Number(ph), Number(pa),
+          Number(miseChamp.value) || 100);
+        retour.textContent = 'Mise enregistrée ✓';
+      } catch (e) {
+        toast(e.message, 'echec');
+      }
+    }, 700);
+  });
+
+  if (brouillon) majApercu();
 }
 
 // ---------- Onglets ----------

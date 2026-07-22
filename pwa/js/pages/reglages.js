@@ -15,6 +15,7 @@ const AIDE_NUL = "Contrôle l'estimation du nul en foot selon l'écart de niveau
 const AIDE_NUL_RUGBY = "Le nul est pariable au rugby aussi, mais il est rare : ces bornes maintiennent sa probabilité basse, donc sa cote haute (plafonnée par la cote maximale). Monter la base rend le nul rugby moins rémunérateur ; la baisser le rend quasi injouable.";
 const AIDE_BONUS = "Multiplicateurs du pari sur score. Bonne issue seule : gain = mise × cote. Bon écart signé en plus (ex. 1-0 pronostiqué, 2-1 réel) : gain × bonus écart. Score exact : gain × bonus score exact. Un pronostic de nul gagnant a d'office le bon écart (0) : il utilise le bonus écart nul, réduit exprès pour ne pas rendre le pari nul systématiquement trop rentable.";
 const AIDE_MISE = "Montant misé automatiquement depuis l'accueil dès que les deux cases de score sont remplies. Pour miser un autre montant sur un match précis, ouvrir sa page et utiliser le formulaire détaillé.";
+const AIDE_BONUS_RUGBY = "Au rugby les scores sont élevés : trouver le score exact est quasi impossible, d'où un bonus très fort (×10 par défaut). Le « bon écart » s'y juge par tranche de points : 0-7, 8-14, 15-21, 22-28, 29-40, plus de 40. Pronostiquer un écart dans la bonne tranche suffit pour décrocher le bonus.";
 const AIDE_FORME ="Nombre de matchs pris en compte pour calculer \"la forme actuelle\" d'une équipe. Petite fenêtre (3) : très réactive mais bruitée. Grande fenêtre (10) : tendance lissée mais plus lente à refléter un vrai changement.";
 
 // Valeurs par défaut de la section 6 de la spec (bouton réinitialiser)
@@ -35,6 +36,8 @@ export const CHAMPS = [
   { cle: 'bonus_ecart', libelle: 'Bonus bon écart', defaut: 1.5, pas: 0.1, aide: AIDE_BONUS },
   { cle: 'bonus_ecart_nul', libelle: 'Bonus bon écart (pronostic nul)', defaut: 1.25, pas: 0.05, aide: AIDE_BONUS },
   { cle: 'bonus_score_exact', libelle: 'Bonus score exact', defaut: 2.0, pas: 0.1, aide: AIDE_BONUS },
+  { cle: 'bonus_ecart_rugby', libelle: 'Bonus tranche d\'écart (rugby)', defaut: 1.5, pas: 0.1, aide: AIDE_BONUS_RUGBY },
+  { cle: 'bonus_score_exact_rugby', libelle: 'Bonus score exact (rugby)', defaut: 10, pas: 0.5, aide: AIDE_BONUS_RUGBY },
   { cle: 'form_window_size', libelle: 'Fenêtre de forme récente', defaut: 5, pas: 1, aide: AIDE_FORME },
   { cle: 'default_stake', libelle: 'Mise des paris rapides', defaut: 100, pas: 10, aide: AIDE_MISE },
 ];

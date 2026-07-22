@@ -82,6 +82,25 @@ export function patch(table, params, valeurs) {
   });
 }
 
+// Insertion avec écrasement sur conflit de clé (brouillons de pronostic)
+export function upsert(table, valeurs, onConflict) {
+  const qs = new URLSearchParams(
+    onConflict ? { on_conflict: onConflict } : {}).toString();
+  return appel(`/rest/v1/${table}${qs ? '?' + qs : ''}`, {
+    method: 'POST',
+    body: JSON.stringify(valeurs),
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+  });
+}
+
+export function effacer(table, params) {
+  const qs = new URLSearchParams(params).toString();
+  return appel(`/rest/v1/${table}?${qs}`, {
+    method: 'DELETE',
+    headers: { Prefer: 'return=minimal' },
+  });
+}
+
 export function rpc(fonction, args = {}) {
   return appel(`/rest/v1/rpc/${fonction}`, { method: 'POST', body: JSON.stringify(args) });
 }

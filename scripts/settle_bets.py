@@ -47,16 +47,43 @@ def _outcome(home, away):
     return "draw"
 
 
-def compute_settlement(pred_h, pred_a, score_h, score_a, settings):
+# Rugby : le « bon écart » se juge par tranche de points, l'écart exact
+# étant hors de portée (décision du 23/07/2026). Bornes hautes incluses.
+TRANCHES_ECART_RUGBY = (7, 14, 21, 28, 40)
+
+
+def tranche_ecart_rugby(ecart):
+    """Indice de tranche d'un écart en valeur absolue :
+    0 -> 0-7, 1 -> 8-14, 2 -> 15-21, 3 -> 22-28, 4 -> 29-40, 5 -> 41+."""
+    ecart = abs(ecart)
+    for i, borne in enumerate(TRANCHES_ECART_RUGBY):
+        if ecart <= borne:
+            return i
+    return len(TRANCHES_ECART_RUGBY)
+
+
+def compute_settlement(pred_h, pred_a, score_h, score_a, settings, sport="football"):
     """Retourne (gagne, multiplicateur) pour un pronostic face au score réel.
     multiplicateur : None si perdu, sinon 1 / bonus_ecart / bonus_ecart_nul
     / bonus_score_exact.
 
-    Un pronostic de nul gagnant a toujours le bon écart (0) : son bonus
-    écart est réduit (bonus_ecart_nul, déf. 1.25) pour ne pas rendre le
-    pari nul systématiquement trop rentable."""
+    Football : écart exact -> bonus_ecart ; score exact -> bonus_score_exact.
+    Un pronostic de nul gagnant a toujours le bon écart (0), son bonus est
+    donc réduit (bonus_ecart_nul) pour ne pas le rendre trop rentable.
+
+    Rugby : score exact -> bonus_score_exact_rugby (×10 par défaut, c'est
+    quasi impossible) ; écart tombant dans la bonne tranche de points
+    (0-7, 8-14, 15-21, 22-28, 29-40, 41+) -> bonus_ecart_rugby."""
     if _outcome(pred_h, pred_a) != _outcome(score_h, score_a):
         return False, None
+
+    if sport == "rugby":
+        if pred_h == score_h and pred_a == score_a:
+            return True, float(settings["bonus_score_exact_rugby"])
+        if tranche_ecart_rugby(pred_h - pred_a) == tranche_ecart_rugby(score_h - score_a):
+            return True, float(settings["bonus_ecart_rugby"])
+        return True, 1.0
+
     if pred_h == score_h and pred_a == score_a:
         return True, float(settings["bonus_score_exact"])
     if (pred_h - pred_a) == (score_h - score_a):
@@ -84,7 +111,8 @@ def _close_bet(db, bet, new_status, multiplier=None):
 def settle_all(db, settings):
     pending = db.select("bets", {
         "status": "eq.pending",
-        "select": "*,match:matches(id,status,score_home,score_away)",
+        "select": ("*,match:matches(id,status,score_home,score_away,"
+                   "league:leagues(sport))"),
     })
     counts = {"won": 0, "lost": 0, "void": 0}
     for bet in pending:
@@ -110,9 +138,10 @@ def settle_all(db, settings):
             gagne = bet["selection"] == _outcome(score_home, score_away)
             multiplier = 1.0 if gagne else None
         else:
+            sport = ((match.get("league") or {}).get("sport")) or "football"
             gagne, multiplier = compute_settlement(
                 bet["predicted_home"], bet["predicted_away"],
-                score_home, score_away, settings)
+                score_home, score_away, settings, sport)
 
         if gagne:
             if _close_bet(db, bet, "won", multiplier):
@@ -127,7 +156,8 @@ def settle_all(db, settings):
 
 
 def _tests():
-    s = {"bonus_ecart": 1.5, "bonus_ecart_nul": 1.25, "bonus_score_exact": 2.0}
+    s = {"bonus_ecart": 1.5, "bonus_ecart_nul": 1.25, "bonus_score_exact": 2.0,
+         "bonus_ecart_rugby": 1.5, "bonus_score_exact_rugby": 10.0}
     # Exemples de la décision du 20/07/2026 :
     # pronostic 1-0, score 2-1 : bonne issue + bon écart (+1) -> ×1.5
     assert compute_settlement(1, 0, 2, 1, s) == (True, 1.5)
@@ -144,7 +174,39 @@ def _tests():
     assert compute_settlement(12, 12, 12, 12, s) == (True, 2.0)
     # nul pronostiqué, victoire réelle -> perdu
     assert compute_settlement(1, 1, 1, 0, s) == (False, None)
-    print("settle_bets.py : grille de gains OK")
+
+    # --- Rugby (décision du 23/07/2026) ---
+    r = lambda ph, pa, sh, sa: compute_settlement(ph, pa, sh, sa, s, "rugby")
+    # Score exact -> ×10
+    assert r(24, 17, 24, 17) == (True, 10.0)
+    # Écart 7 pronostiqué, écart 3 réel : même tranche 0-7 -> ×1.5
+    assert r(24, 17, 20, 17) == (True, 1.5)
+    # Écart 7 (tranche 0-7) contre écart 9 (tranche 8-14) -> bonne issue seule
+    assert r(24, 17, 26, 17) == (True, 1.0)
+    # Tranche 15-21 des deux côtés -> ×1.5
+    assert r(30, 12, 40, 21) == (True, 1.5)
+    # Tranche 41+ des deux côtés -> ×1.5
+    assert r(60, 5, 70, 3) == (True, 1.5)
+    # Bonne tranche mais mauvaise issue -> perdu
+    assert r(24, 17, 17, 24) == (False, None)
+    # Vérification des bornes de tranches
+    assert tranche_ecart_rugby(7) == 0 and tranche_ecart_rugby(8) == 1
+    assert tranche_ecart_rugby(14) == 1 and tranche_ecart_rugby(15) == 2
+    assert tranche_ecart_rugby(28) == 3 and tranche_ecart_rugby(29) == 4
+    assert tranche_ecart_rugby(40) == 4 and tranche_ecart_rugby(41) == 5
+    print("settle_bets.py : grille de gains foot et rugby OK")
+
+
+def valider_brouillons(db):
+    """Transforme en paris fermes les brouillons dont le match a commencé
+    (fonction SQL validate_due_drafts). À faire avant le règlement : un
+    match peut être terminé avant notre premier passage."""
+    try:
+        valides = db.rpc("validate_due_drafts")
+        if valides:
+            log.info("%s brouillon(s) validé(s) en pari ferme", valides)
+    except Exception:
+        log.exception("Échec de la validation des brouillons")
 
 
 def main():
@@ -152,6 +214,7 @@ def main():
         _tests()
         return
     db = SupabaseDB()
+    valider_brouillons(db)
     settle_all(db, load_settings(db))
 
 

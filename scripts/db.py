@@ -65,6 +65,13 @@ class SupabaseDB:
         r.raise_for_status()
         return r.json() if return_rows else None
 
+    def rpc(self, fonction, args=None):
+        """Appel d'une fonction SQL (POST /rest/v1/rpc/...)."""
+        r = self.session.post(f"{self.base}/rpc/{fonction}",
+                              json=args or {}, timeout=30)
+        r.raise_for_status()
+        return r.json() if r.content else None
+
     def delete(self, table, params):
         """DELETE sur les lignes filtrées par params (params obligatoire :
         jamais de delete sans filtre)."""

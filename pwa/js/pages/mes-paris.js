@@ -3,7 +3,7 @@
 // Rien ne rejoint le portefeuille sans une action ici (ou sur la page
 // d'un match) : c'est la collecte manuelle.
 
-import { collecter, mesParis } from '../api.js';
+import { collecter, mesParis, tousLesBrouillons } from '../api.js';
 import {
   blason, dateHeure, echapper, eclats, envoyerPieces, erreur, gainPari,
   libelleBonus, squelettes, toast, vide,
@@ -16,8 +16,10 @@ const LIBELLES = {
 export async function pageMesParis(conteneur) {
   conteneur.innerHTML = squelettes(4);
   try {
-    const paris = await mesParis();
-    rendre(conteneur, paris);
+    const [paris, brouillons] = await Promise.all([
+      mesParis(), tousLesBrouillons(),
+    ]);
+    rendre(conteneur, paris, brouillons);
   } catch (e) {
     conteneur.innerHTML = erreur(e);
   }
@@ -32,15 +34,19 @@ function nbPieces(montant) {
   return Math.max(4, Math.min(12, Math.round(montant / 90) + 4));
 }
 
-function rendre(conteneur, paris) {
+function rendre(conteneur, paris, brouillons = []) {
   const aCollecter = paris.filter(
     (p) => !p.collected_at && (p.status === 'won' || p.status === 'void'));
-  const enCours = paris.filter((p) => p.status === 'pending');
+  // Paris validés dont le match n'est pas terminé : en direct ou à venir
+  const enDirect = paris.filter(
+    (p) => p.status === 'pending' && p.match?.status === 'live');
+  const enAttente = paris.filter(
+    (p) => p.status === 'pending' && p.match?.status !== 'live');
   const historique = paris.filter(
     (p) => p.status === 'lost' || p.collected_at);
 
-  if (!paris.length) {
-    conteneur.innerHTML = `<h1>Mes paris</h1>${vide('🎟️', 'Aucun pari pour le moment',
+  if (!paris.length && !brouillons.length) {
+    conteneur.innerHTML = `<h1>Mes paris</h1>${vide('🎟️', 'Aucun pronostic pour le moment',
       'Saisis un score depuis l\'onglet Paris pour te lancer.')}`;
     return;
   }
@@ -59,8 +65,18 @@ function rendre(conteneur, paris) {
       </div>
       ${aCollecter.map((p) => cartePari(p, true)).join('')}` : ''}
 
-    ${enCours.length ? `<h2>En cours (${enCours.length})</h2>
-      ${enCours.map((p) => cartePari(p)).join('')}` : ''}
+    ${enDirect.length ? `<h2>● En direct (${enDirect.length})</h2>
+      <p class="faible">Score rafraîchi à chaque synchronisation,
+        environ toutes les deux heures.</p>
+      ${enDirect.map((p) => cartePari(p)).join('')}` : ''}
+
+    ${enAttente.length ? `<h2>Paris validés (${enAttente.length})</h2>
+      ${enAttente.map((p) => cartePari(p)).join('')}` : ''}
+
+    ${brouillons.length ? `<h2>Pronostics enregistrés (${brouillons.length})</h2>
+      <p class="faible">Modifiables jusqu'au coup d'envoi, où ils
+        deviennent des paris fermes.</p>
+      ${brouillons.map(carteBrouillon).join('')}` : ''}
 
     ${historique.length ? `<h2>Historique</h2>
       ${historique.slice(0, 40).map((p) => cartePari(p)).join('')}` : ''}`;
@@ -68,9 +84,41 @@ function rendre(conteneur, paris) {
   brancherCollecte(conteneur, aCollecter);
 }
 
+// Pronostic enregistré mais pas encore validé (le match n'a pas commencé)
+function carteBrouillon(d) {
+  const m = d.match;
+  return `
+    <a class="carte" href="#/match/${d.match_id}">
+      <div class="match-entete">
+        <span class="competition">
+          ${m?.league?.sport === 'rugby' ? '🏉' : '⚽'} ${echapper(m?.league?.name || '')}
+        </span>
+        <span>${dateHeure(m?.kickoff_at)}</span>
+      </div>
+      <div class="match-corps">
+        <div class="equipe">${blason(m?.home)}
+          <span class="nom">${echapper(m?.home?.name)}</span></div>
+        <div class="bloc-score">
+          <div class="cases-score">
+            <div class="score-fige">${d.predicted_home}</div>
+            <span class="deux-points">:</span>
+            <div class="score-fige">${d.predicted_away}</div>
+          </div>
+        </div>
+        <div class="equipe">${blason(m?.away)}
+          <span class="nom">${echapper(m?.away?.name)}</span></div>
+      </div>
+      <div class="match-pied">
+        <span class="libelle">Mise prévue ${eclats(d.stake_eclats)} ✦</span>
+        <span class="gain-pastille attente">modifiable</span>
+      </div>
+    </a>`;
+}
+
 function cartePari(p, recoltable = false) {
   const m = p.match;
   const termine = m?.status === 'finished';
+  const enDirect = m?.status === 'live';
   const montant = montantACollecter(p);
   return `
     <div class="carte" data-pari="${p.id}">
@@ -86,9 +134,9 @@ function cartePari(p, recoltable = false) {
         </a>
         <div class="bloc-score">
           <div class="cases-score">
-            <div class="score-fige">${termine ? m.score_home : '?'}</div>
+            <div class="score-fige">${termine || enDirect ? m.score_home ?? '?' : '?'}</div>
             <span class="deux-points">:</span>
-            <div class="score-fige">${termine ? m.score_away : '?'}</div>
+            <div class="score-fige">${termine || enDirect ? m.score_away ?? '?' : '?'}</div>
           </div>
           <div class="faible">pronostic ${p.predicted_home} - ${p.predicted_away}</div>
         </div>
@@ -119,7 +167,10 @@ function cartePari(p, recoltable = false) {
 function brancherCollecte(conteneur, aCollecter) {
   const rafraichir = async () => {
     try {
-      rendre(conteneur, await mesParis());
+      const [paris, brouillons] = await Promise.all([
+        mesParis(), tousLesBrouillons(),
+      ]);
+      rendre(conteneur, paris, brouillons);
     } catch (e) {
       conteneur.innerHTML = erreur(e);
     }

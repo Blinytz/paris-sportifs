@@ -3,11 +3,11 @@
 
 // Incrémenter à chaque déploiement qui modifie le shell : l'activation
 // purge l'ancien cache et évite de servir des modules JS périmés.
-const CACHE = 'paris-sportifs-v6';
+const CACHE = 'paris-sportifs-v7';
 const SHELL = [
   './', 'index.html', 'css/style.css', 'manifest.json',
   'js/app.js', 'js/router.js', 'js/supabase.js', 'js/api.js', 'js/ui.js',
-  'js/config.js',
+  'js/config.js', 'js/saisie.js',
   'js/pages/accueil.js', 'js/pages/classement.js', 'js/pages/equipe.js',
   'js/pages/match.js', 'js/pages/mes-paris.js', 'js/pages/reglages.js',
   'icons/icon-192.png', 'icons/icon-512.png',

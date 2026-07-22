@@ -1,33 +1,28 @@
 // Page Paris : un jour à la fois (sélecteur de dates horizontal), cartes
-// « logo · score · logo » façon MPP.
-//   - match à venir  : les deux cases sont saisissables, le pari part tout
-//     seul avec la mise par défaut dès qu'elles sont remplies
-//   - match joué     : score figé, pronostic et gain rappelés dessous
+// « blason · score · blason » façon MPP.
+//   - match à venir : les cases sont modifiables à volonté, le pronostic
+//     est enregistré en brouillon et validé au coup d'envoi
+//   - match commencé ou joué : score figé, pronostic et gain rappelés
 
 import {
-  dernieresCotes, listeLigues, lireReglages, matchsDuJour,
-  mesParisSurMatchs, placerPari,
+  brouillonsSurMatchs, dernieresCotes, listeLigues, lireReglages,
+  matchsDuJour, mesParisSurMatchs,
 } from '../api.js';
+import { brancherCases, casesScore } from '../saisie.js';
 import {
   blason, cleJour, echapper, eclats, erreur, gainPari, heure, libelleBonus,
-  nombre, squelettes, toast, vibrer, vide,
+  nombre, squelettes, vide,
 } from '../ui.js';
 
-const DELAI_ENVOI = 1200;   // laisse le temps de saisir un score à 2 chiffres
-const JOURS_AVANT = 3;      // profondeur du sélecteur de dates
-const JOURS_APRES = 9;      // fenêtre synchronisée par le sync
+const JOURS_AVANT = 3;
+const JOURS_APRES = 9;
 
 const etat = { date: null, sport: '', leagueId: '' };
 let liguesCache = null;
 
-function aujourdhui() {
-  const d = new Date();
-  return cleJour(d.toISOString());
-}
-
 export async function pageAccueil(conteneur) {
-  etat.date = etat.date || aujourdhui();
-  conteneur.innerHTML = `<div class="bandeau-dates"></div>${squelettes(3)}`;
+  etat.date = etat.date || cleJour(new Date().toISOString());
+  conteneur.innerHTML = squelettes(3);
   try {
     liguesCache = liguesCache || await listeLigues();
     await rendre(conteneur);
@@ -60,9 +55,8 @@ function bandeauFiltres() {
     `<button class="puce ${etat.sport === 'football' ? 'actif' : ''}" data-sport="football">⚽ Foot</button>`,
     `<button class="puce ${etat.sport === 'rugby' ? 'actif' : ''}" data-sport="rugby">🏉 Rugby</button>`,
   ];
-  const ligues = (liguesCache || []).filter(
-    (l) => !etat.sport || l.sport === etat.sport);
-  for (const l of ligues) {
+  for (const l of (liguesCache || []).filter(
+    (l) => !etat.sport || l.sport === etat.sport)) {
     puces.push(`<button class="puce ${etat.leagueId === l.id ? 'actif' : ''}"
       data-ligue="${l.id}">${echapper(l.name)}</button>`);
   }
@@ -81,38 +75,35 @@ async function rendre(conteneur) {
     lireReglages(),
   ]);
   const ids = matchs.map((m) => m.id);
-  const [cotes, paris] = await Promise.all([
-    dernieresCotes(ids), mesParisSurMatchs(ids),
+  const [cotes, paris, brouillons] = await Promise.all([
+    dernieresCotes(ids), mesParisSurMatchs(ids), brouillonsSurMatchs(ids),
   ]);
   const mise = Number(reglages?.default_stake) || 100;
 
   const liste = matchs.length
-    ? matchs.map((m) => carteMatch(m, cotes.get(m.id), paris.get(m.id) || [])).join('')
+    ? matchs.map((m) => carteMatch(
+        m, cotes.get(m.id), paris.get(m.id) || [], brouillons.get(m.id))).join('')
     : vide('📅', 'Aucun match ce jour',
         'Change de date ou de compétition avec les filtres ci-dessus.');
 
   conteneur.innerHTML = `
     ${bandeauDates()}
     ${bandeauFiltres()}
-    <p class="faible centre">Saisis un score : la mise de
-      <strong>${eclats(mise)} ✦</strong> part toute seule.</p>
+    <p class="faible centre">Ton score est enregistré au fil de la saisie
+      et modifiable jusqu'au coup d'envoi, où il devient un pari de
+      <strong>${eclats(mise)} ✦</strong>.</p>
     ${liste}`;
   brancherBandeaux(conteneur);
-  brancherSaisie(conteneur, mise);
+  brancherSaisies(conteneur, mise);
 }
 
 function brancherBandeaux(conteneur) {
   conteneur.querySelectorAll('.puce-date').forEach((b) => {
-    b.addEventListener('click', () => {
-      etat.date = b.dataset.date;
-      rendre(conteneur);
-    });
+    b.addEventListener('click', () => { etat.date = b.dataset.date; rendre(conteneur); });
   });
   conteneur.querySelectorAll('.puce[data-sport]').forEach((b) => {
     b.addEventListener('click', () => {
-      etat.sport = b.dataset.sport;
-      etat.leagueId = '';
-      rendre(conteneur);
+      etat.sport = b.dataset.sport; etat.leagueId = ''; rendre(conteneur);
     });
   });
   conteneur.querySelectorAll('.puce[data-ligue]').forEach((b) => {
@@ -121,7 +112,6 @@ function brancherBandeaux(conteneur) {
       rendre(conteneur);
     });
   });
-  // Garde la date active visible dans le bandeau défilant
   const active = conteneur.querySelector('.puce-date.actif');
   if (active) active.scrollIntoView({ block: 'nearest', inline: 'center' });
 }
@@ -131,47 +121,35 @@ function issueDe(h, a) {
   return h < a ? 'away' : 'draw';
 }
 
-function carteMatch(m, cote, parisDuMatch) {
-  const ouvert = m.status === 'scheduled' && !m.odds_locked
-    && new Date(m.kickoff_at) > new Date();
+function carteMatch(m, cote, parisDuMatch, brouillon) {
+  const ouvert = m.status === 'scheduled' && new Date(m.kickoff_at) > new Date();
   const termine = m.status === 'finished' && m.score_home !== null;
+  const enCours = m.status === 'live';
   const pari = parisDuMatch[0];
+  const pronostic = pari || brouillon;
 
-  // Cotes : celle de l'issue pronostiquée est mise en évidence
-  const issuePari = pari ? issueDe(pari.predicted_home, pari.predicted_away) : null;
+  const issuePronostic = pronostic
+    ? issueDe(pronostic.predicted_home, pronostic.predicted_away) : null;
   const cotesMini = cote ? `
     <div class="cotes-mini">
-      <span class="${issuePari === 'home' ? 'choisi' : ''}">${nombre(cote.home_odds, 2)}</span>
-      ${cote.draw_odds ? `<span class="${issuePari === 'draw' ? 'choisi' : ''}">${nombre(cote.draw_odds, 2)}</span>` : ''}
-      <span class="${issuePari === 'away' ? 'choisi' : ''}">${nombre(cote.away_odds, 2)}</span>
+      <span class="${issuePronostic === 'home' ? 'choisi' : ''}">${nombre(cote.home_odds, 2)}</span>
+      ${cote.draw_odds ? `<span class="${issuePronostic === 'draw' ? 'choisi' : ''}">${nombre(cote.draw_odds, 2)}</span>` : ''}
+      <span class="${issuePronostic === 'away' ? 'choisi' : ''}">${nombre(cote.away_odds, 2)}</span>
     </div>` : '';
 
-  const centre = termine
-    ? `<div class="cases-score">
-         <div class="score-fige">${m.score_home}</div>
+  const centre = ouvert
+    ? casesScore(m, brouillon)
+    : `<div class="cases-score">
+         <div class="score-fige">${termine || enCours ? m.score_home ?? '?' : '?'}</div>
          <span class="deux-points">:</span>
-         <div class="score-fige">${m.score_away}</div>
-       </div>`
-    : ouvert && cote
-      ? `<div class="cases-score">
-           <input class="case-score" data-camp="home" type="number" min="0" max="199"
-                  inputmode="numeric" aria-label="Score ${echapper(m.home?.name)}">
-           <span class="deux-points">:</span>
-           <input class="case-score" data-camp="away" type="number" min="0" max="199"
-                  inputmode="numeric" aria-label="Score ${echapper(m.away?.name)}">
-         </div>`
-      : `<div class="cases-score">
-           <div class="score-fige">?</div>
-           <span class="deux-points">:</span>
-           <div class="score-fige">?</div>
-         </div>`;
+         <div class="score-fige">${termine || enCours ? m.score_away ?? '?' : '?'}</div>
+       </div>`;
 
   return `
     <div class="carte carte-match" data-match="${m.id}">
       <div class="match-entete">
         <a class="competition" href="#/match/${m.id}">
-          ${m.league?.sport === 'rugby' ? '🏉' : '⚽'}
-          ${echapper(m.league?.name || '')}
+          ${m.league?.sport === 'rugby' ? '🏉' : '⚽'} ${echapper(m.league?.name || '')}
         </a>
         <span>${etiquetteStatut(m)}</span>
       </div>
@@ -184,7 +162,7 @@ function carteMatch(m, cote, parisDuMatch) {
           ${blason(m.away)}<span class="nom">${echapper(m.away?.name)}</span>
         </a>
       </div>
-      ${piedCarte(m, pari, parisDuMatch, termine)}
+      ${piedCarte(m, pari, brouillon, parisDuMatch, termine, ouvert)}
     </div>`;
 }
 
@@ -196,21 +174,32 @@ function etiquetteStatut(m) {
   return heure(m.kickoff_at);
 }
 
-function piedCarte(m, pari, parisDuMatch, termine) {
-  if (!pari) {
-    return parisDuMatch.length ? '' : `
+function piedCarte(m, pari, brouillon, parisDuMatch, termine, ouvert) {
+  // Match à venir : état de l'enregistrement du brouillon
+  if (ouvert) {
+    return `
       <div class="match-pied">
-        <span class="retour-saisie faible"></span>
+        <span class="etat-saisie faible">${brouillon
+          ? `Enregistré : ${brouillon.predicted_home} - ${brouillon.predicted_away}`
+          : 'Saisis ton pronostic'}</span>
         <a class="lien-classement" href="#/match/${m.id}">Détails et mise →</a>
+      </div>`;
+  }
+  if (!pari) {
+    return `
+      <div class="match-pied">
+        <span class="faible">${brouillon
+          ? `Pronostic ${brouillon.predicted_home} - ${brouillon.predicted_away} en cours de validation`
+          : 'Pas de pronostic'}</span>
+        <a class="lien-classement" href="#/match/${m.id}">Détails →</a>
       </div>`;
   }
   const autres = parisDuMatch.length > 1
     ? ` <span class="faible">+${parisDuMatch.length - 1}</span>` : '';
   let pastille;
   if (pari.status === 'won') {
-    const collecte = pari.collected_at;
-    pastille = `<span class="gain-pastille ${collecte ? 'gagne' : 'collecte'}">
-      ${collecte ? '' : '✦ '}+${eclats(gainPari(pari))} ✦</span>`;
+    pastille = `<span class="gain-pastille ${pari.collected_at ? 'gagne' : 'collecte'}">
+      ${pari.collected_at ? '' : '✦ '}+${eclats(gainPari(pari))} ✦</span>`;
   } else if (pari.status === 'lost') {
     pastille = '<span class="gain-pastille perdu">perdu</span>';
   } else if (pari.status === 'void') {
@@ -221,7 +210,7 @@ function piedCarte(m, pari, parisDuMatch, termine) {
   return `
     <div class="match-pied">
       <div>
-        <div class="libelle">Mon pronostic${autres}</div>
+        <div class="libelle">Pari validé${autres}</div>
         <div class="valeur">${pari.predicted_home} - ${pari.predicted_away}
           ${termine && pari.status === 'won'
             ? `<span class="faible">· ${echapper(libelleBonus(pari, m.score_home, m.score_away))}</span>`
@@ -231,52 +220,17 @@ function piedCarte(m, pari, parisDuMatch, termine) {
     </div>`;
 }
 
-function brancherSaisie(conteneur, mise) {
+function brancherSaisies(conteneur, mise) {
   for (const carte of conteneur.querySelectorAll('.carte-match')) {
-    const champs = carte.querySelectorAll('.case-score');
-    if (champs.length !== 2) continue;
-    const retour = carte.querySelector('.retour-saisie');
-    let minuteur = null;
-
-    const lire = () => [...champs].map((c) => c.value.trim());
-    const dire = (texte, classe = 'faible') => {
-      if (retour) { retour.textContent = texte; retour.className = `retour-saisie ${classe}`; }
-    };
-
-    const envoyer = async () => {
-      clearTimeout(minuteur);
-      const [ph, pa] = lire();
-      if (ph === '' || pa === '') return;
-      champs.forEach((c) => { c.disabled = true; });
-      dire('Placement…');
-      try {
-        await placerPari(carte.dataset.match, Number(ph), Number(pa), mise);
-        vibrer(18);
-        toast(`Pari ${ph}-${pa} placé pour ${eclats(mise)} ✦`, 'succes');
-        window.dispatchEvent(new Event('eclats-changes'));
-        // Recharge la journée : la carte bascule en « pronostic placé »
-        await rendre(conteneur);
-      } catch (e) {
-        dire(`Refusé : ${e.message}`, 'erreur');
-        toast(e.message, 'echec');
-        champs.forEach((c) => { c.disabled = false; });
-      }
-    };
-
-    const planifier = () => {
-      clearTimeout(minuteur);
-      const [ph, pa] = lire();
-      champs.forEach((c) => c.classList.toggle('rempli', c.value.trim() !== ''));
-      if (ph === '' || pa === '') { dire(''); return; }
-      dire(`Pari ${ph}-${pa} dans un instant…`);
-      minuteur = setTimeout(envoyer, DELAI_ENVOI);
-    };
-
-    champs.forEach((c) => {
-      c.addEventListener('input', planifier);
-      c.addEventListener('keydown', (evt) => {
-        if (evt.key === 'Enter') { evt.preventDefault(); c.blur(); envoyer(); }
-      });
+    const etatSaisie = carte.querySelector('.etat-saisie');
+    brancherCases(carte, {
+      mise,
+      surEtat: (texte, classe) => {
+        if (etatSaisie) {
+          etatSaisie.textContent = texte;
+          etatSaisie.className = `etat-saisie ${classe === 'ok' ? 'ok' : classe}`;
+        }
+      },
     });
   }
 }
