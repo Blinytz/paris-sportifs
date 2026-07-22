@@ -28,12 +28,22 @@ async function majSolde({ anime = false } = {}) {
 
 async function majBadgeCollecte() {
   const badge = document.getElementById('badge-collecte');
+  const pastille = document.getElementById('a-recolter');
   try {
     const enAttente = await parisACollecter();
     badge.hidden = enAttente.length === 0;
     badge.textContent = enAttente.length;
+
+    // Montant en attente, toujours visible : ces Éclats ne sont pas
+    // dans le solde tant qu'ils n'ont pas été récoltés
+    const total = enAttente.reduce((somme, p) => somme + (p.status === 'won'
+      ? Number(p.potential_payout) * (Number(p.bonus_multiplier) || 1)
+      : Number(p.stake_eclats)), 0);
+    pastille.hidden = total <= 0;
+    pastille.textContent = `+${eclats(total)} ✦ à récolter`;
   } catch {
     badge.hidden = true;
+    pastille.hidden = true;
   }
 }
 
