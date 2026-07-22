@@ -140,6 +140,7 @@ class TeamCache:
                 "teams",
                 [{"sport": self.sport, "external_id": t["id"],
                   "name": t.get("name") or f"Équipe {t['id']}",
+                  "logo_url": t.get("logo"),
                   "rating": ELO_START}
                  for t in {t["id"]: t for t in missing}.values()],
                 on_conflict="sport,external_id", ignore_duplicates=True,
@@ -149,6 +150,14 @@ class TeamCache:
                 "sport": f"eq.{self.sport}", "external_id": f"in.({ids})",
             }):
                 self.by_ext[row["external_id"]] = row
+            # Complète le logo des équipes créées avant son stockage
+            logos = {t["id"]: t.get("logo") for t in missing if t.get("logo")}
+            for ext_id, logo in logos.items():
+                row = self.by_ext.get(ext_id)
+                if row and not row.get("logo_url"):
+                    self.db.update("teams", {"logo_url": logo},
+                                   {"id": f"eq.{row['id']}"})
+                    row["logo_url"] = logo
 
 
 def sync_date(db, client, date, ligues_par_ext, team_cache, saisons):

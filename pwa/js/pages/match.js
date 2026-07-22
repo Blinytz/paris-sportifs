@@ -1,240 +1,326 @@
-// Page match (sections 7.2 et 7.3) : même route, contenu selon status.
-// - scheduled : cotes + pari, bloc comparatif, confrontations directes
-// - finished  : score final, mes paris sur ce match, bloc comparatif figé
-//   "avant le match" (recalculé depuis l'historique antérieur au coup
-//   d'envoi, et cotes = dernières générées avant le kickoff)
+// Page match : en-tête avec blasons, formulaire de pari à mise libre,
+// puis deux onglets « Avant-match » (comparatif + confrontations) et
+// « Classement ». Un pari gagné se récolte aussi depuis ici.
 
 import {
-  confrontations, dernieresCotes, lireMatch, lireReglages, matchsEquipe,
-  mesParisSurMatch, placerPari, positionsDansLigue, statsCompetition,
-  statsGlobales,
+  classementLigue, collecter, confrontations, dernieresCotes, lireMatch,
+  lireReglages, matchsEquipe, mesParisSurMatch, placerPari,
+  positionsDansLigue, statsCompetition, statsGlobales,
 } from '../api.js';
 import {
-  badgesForme, chargement, dateHeure, echapper, erreur, formeDepuisMatchs,
-  libelleBonus, nombre, ordinal, probaImplicite,
+  badgesForme, blason, dateHeure, echapper, eclats, envoyerPieces, erreur,
+  formeDepuisMatchs, gainPari, libelleBonus, nombre, ordinal, probaImplicite,
+  squelettes, toast, vibrer,
 } from '../ui.js';
 
-const SELECTIONS = { home: '1 (domicile)', draw: 'Nul', away: '2 (extérieur)' };
+const ISSUES = { home: 'domicile', draw: 'nul', away: 'extérieur' };
 const STATUTS = {
-  live: 'Match en cours : paris fermés',
-  postponed: 'Match reporté : paris remboursés',
-  cancelled: 'Match annulé : paris remboursés',
+  live: '● en direct', postponed: 'reporté', cancelled: 'annulé',
+  finished: 'terminé',
 };
 
+let ongletActif = 'avant';
+
 export async function pageMatch(conteneur, matchId) {
-  conteneur.innerHTML = chargement();
+  conteneur.innerHTML = squelettes(3);
   try {
     const match = await lireMatch(matchId);
     if (!match) {
-      conteneur.innerHTML = '<p class="erreur">Match introuvable.</p>';
+      conteneur.innerHTML = '<div class="vide"><span class="emoji">🔍</span>'
+        + '<p>Match introuvable.</p></div>';
       return;
     }
-    if (match.status === 'finished') await renduTermine(conteneur, match);
-    else if (match.status === 'scheduled') await renduAVenir(conteneur, match);
-    else await renduAutre(conteneur, match);
+    const [cotesMap, paris, reglages] = await Promise.all([
+      dernieresCotes([match.id],
+        match.status === 'finished' ? match.kickoff_at : null),
+      mesParisSurMatch(match.id),
+      lireReglages(),
+    ]);
+    rendre(conteneur, match, cotesMap.get(match.id), paris, reglages);
   } catch (e) {
     conteneur.innerHTML = erreur(e);
   }
 }
 
-function entete(match, sousTitre) {
-  const lienClassement = match.league?.category === 'championnat'
-    ? ` · <a class="lien-classement" href="#/classement/${match.league_id}">Classement</a>`
-    : '';
-  return `
-    <header class="entete-page">
-      <p class="muet">${echapper(match.league?.name)} · ${dateHeure(match.kickoff_at)}${lienClassement}</p>
-      <h1 class="affiche">
-        <a href="#/equipe/${match.home_team_id}">${echapper(match.home?.name)}</a>
-        <span class="muet">${sousTitre}</span>
-        <a href="#/equipe/${match.away_team_id}">${echapper(match.away?.name)}</a>
-      </h1>
-    </header>`;
-}
-
-// ---------- Match à venir (7.2) ----------
-
-async function renduAVenir(conteneur, match) {
-  const [cotesParMatch, reglages] = await Promise.all([
-    dernieresCotes([match.id]), lireReglages(),
-  ]);
-  const cotes = cotesParMatch.get(match.id);
+function rendre(conteneur, match, cotes, paris, reglages) {
+  const termine = match.status === 'finished' && match.score_home !== null;
+  const ouvert = match.status === 'scheduled' && !match.odds_locked
+    && new Date(match.kickoff_at) > new Date();
+  const estChampionnat = match.league?.category === 'championnat';
 
   conteneur.innerHTML = `
-    ${entete(match, 'vs')}
-    <section class="carte" id="zone-pari">
-      <h2>Parier sur le score</h2>
-      ${cotes ? formulairePari(match, cotes)
-              : '<p class="muet">Cotes pas encore générées (prochain run de sync).</p>'}
-    </section>
-    <section id="zone-comparatif">${chargement()}</section>
-    <section id="zone-h2h">${chargement()}</section>`;
+    <div class="carte">
+      <div class="match-entete">
+        <span class="competition">${match.league?.sport === 'rugby' ? '🏉' : '⚽'}
+          ${echapper(match.league?.name)}</span>
+        <span>${echapper(STATUTS[match.status] || dateHeure(match.kickoff_at))}</span>
+      </div>
+      <div class="match-corps">
+        <a class="equipe" href="#/equipe/${match.home_team_id}">
+          ${blason(match.home)}<span class="nom">${echapper(match.home?.name)}</span>
+        </a>
+        <div class="bloc-score">
+          <div class="cases-score">
+            <div class="score-fige">${termine ? match.score_home : '?'}</div>
+            <span class="deux-points">:</span>
+            <div class="score-fige">${termine ? match.score_away : '?'}</div>
+          </div>
+          ${cotes ? `<div class="cotes-mini">
+            <span>${nombre(cotes.home_odds, 2)}</span>
+            ${cotes.draw_odds ? `<span>${nombre(cotes.draw_odds, 2)}</span>` : ''}
+            <span>${nombre(cotes.away_odds, 2)}</span></div>` : ''}
+        </div>
+        <a class="equipe" href="#/equipe/${match.away_team_id}">
+          ${blason(match.away)}<span class="nom">${echapper(match.away?.name)}</span>
+        </a>
+      </div>
+      <div class="faible centre" style="margin-top:.6rem">
+        ${echapper(dateHeure(match.kickoff_at))}</div>
+    </div>
 
-  if (cotes) brancherPari(conteneur, match, cotes, reglages);
+    ${paris.length ? blocMesParis(match, paris) : ''}
 
-  const [comparatif, h2h] = await Promise.all([
-    blocComparatif(match, cotes, null),
-    confrontations(match.home_team_id, match.away_team_id),
-  ]);
-  conteneur.querySelector('#zone-comparatif').innerHTML = comparatif;
-  conteneur.querySelector('#zone-h2h').innerHTML = blocH2H(h2h);
-  brancherVoirPlus(conteneur);
+    ${ouvert && cotes ? blocPari(match, cotes, reglages)
+      : ouvert ? '<p class="muet centre">Cotes pas encore générées.</p>' : ''}
+
+    <div class="onglets-internes">
+      <button data-onglet="avant" class="${ongletActif === 'avant' ? 'actif' : ''}">
+        Avant-match</button>
+      <button data-onglet="classement" class="${ongletActif === 'classement' ? 'actif' : ''}"
+        ${estChampionnat ? '' : 'disabled'}>Classement</button>
+    </div>
+    <div id="contenu-onglet">${squelettes(2)}</div>`;
+
+  conteneur.querySelectorAll('.onglets-internes button').forEach((b) => {
+    b.addEventListener('click', () => {
+      if (b.disabled) return;
+      ongletActif = b.dataset.onglet;
+      conteneur.querySelectorAll('.onglets-internes button').forEach(
+        (x) => x.classList.toggle('actif', x === b));
+      chargerOnglet(conteneur, match, cotes, reglages);
+    });
+  });
+
+  if (ouvert && cotes) brancherPari(conteneur, match, cotes, reglages);
+  brancherRecolte(conteneur);
+  chargerOnglet(conteneur, match, cotes, reglages);
 }
 
-function formulairePari(match, cotes) {
+// ---------- Mes paris sur ce match ----------
+
+function blocMesParis(match, paris) {
   return `
-    <form id="formulaire-pari">
-      <div class="rangee-cotes info-cotes">
-        <span>1 · ${nombre(cotes.home_odds, 2)}</span>
-        ${cotes.draw_odds ? `<span>N · ${nombre(cotes.draw_odds, 2)}</span>` : ''}
-        <span>2 · ${nombre(cotes.away_odds, 2)}</span>
+    <div class="carte">
+      <h2 style="margin-top:0">Mes pronostics</h2>
+      ${paris.map((p) => {
+        const recoltable = (p.status === 'won' || p.status === 'void') && !p.collected_at;
+        const montant = p.status === 'won' ? gainPari(p) : Number(p.stake_eclats);
+        return `
+        <div class="match-pied" data-pari="${p.id}" style="border-top:0;padding-top:0">
+          <div>
+            <div class="libelle">${eclats(p.stake_eclats)} ✦ à
+              ${echapper(Number(p.odds_at_bet).toFixed(2))}</div>
+            <div class="valeur">${p.predicted_home} - ${p.predicted_away}
+              ${p.status === 'won'
+                ? `<span class="faible">· ${echapper(libelleBonus(p, match.score_home, match.score_away))}</span>` : ''}</div>
+          </div>
+          ${recoltable
+            ? `<button class="btn-or bouton-recolter" data-pari="${p.id}"
+                 data-montant="${montant}">Récolter ${eclats(montant)} ✦</button>`
+            : p.status === 'won'
+              ? `<span class="gain-pastille gagne">+${eclats(gainPari(p))} ✦</span>`
+              : p.status === 'lost'
+                ? '<span class="gain-pastille perdu">perdu</span>'
+                : p.status === 'void'
+                  ? '<span class="gain-pastille attente">remboursé</span>'
+                  : '<span class="gain-pastille attente">en cours</span>'}
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function brancherRecolte(conteneur) {
+  conteneur.querySelectorAll('.bouton-recolter').forEach((bouton) => {
+    bouton.addEventListener('click', async () => {
+      const ligne = bouton.closest('[data-pari]');
+      bouton.disabled = true;
+      bouton.textContent = '…';
+      try {
+        await collecter([bouton.dataset.pari]);
+        envoyerPieces(ligne, 6);
+        window.dispatchEvent(new Event('eclats-collectes'));
+        toast(`+${eclats(bouton.dataset.montant)} ✦ récoltés`, 'succes');
+        bouton.replaceWith(Object.assign(document.createElement('span'), {
+          className: 'gain-pastille gagne',
+          textContent: `+${eclats(bouton.dataset.montant)} ✦`,
+        }));
+      } catch (e) {
+        bouton.disabled = false;
+        bouton.textContent = 'Récolter';
+        toast(e.message, 'echec');
+      }
+    });
+  });
+}
+
+// ---------- Formulaire de pari (mise libre) ----------
+
+function blocPari(match, cotes, reglages) {
+  const mise = Number(reglages?.default_stake) || 100;
+  return `
+    <div class="carte">
+      <h2 style="margin-top:0">Parier sur le score</h2>
+      <div class="match-corps">
+        <span class="faible centre">${echapper(match.home?.name)}</span>
+        <div class="cases-score">
+          <input class="case-score" id="pari-h" type="number" min="0" max="199"
+                 inputmode="numeric" aria-label="Score domicile">
+          <span class="deux-points">:</span>
+          <input class="case-score" id="pari-a" type="number" min="0" max="199"
+                 inputmode="numeric" aria-label="Score extérieur">
+        </div>
+        <span class="faible centre">${echapper(match.away?.name)}</span>
       </div>
-      <div class="rangee-score">
-        <label>${echapper(match.home?.name)}
-          <input type="number" name="ph" min="0" max="199" step="1" inputmode="numeric" required></label>
-        <span class="tiret">-</span>
-        <label>${echapper(match.away?.name)}
-          <input type="number" name="pa" min="0" max="199" step="1" inputmode="numeric" required></label>
+      <div class="rangee-mise" style="margin-top:.8rem">
+        <label>Mise en Éclats
+          <input type="number" id="pari-mise" min="1" step="10" value="${mise}"></label>
+        <button class="btn-or" id="pari-envoyer">Placer</button>
       </div>
-      <div class="rangee-mise">
-        <label>Mise <input type="number" name="mise" min="1" step="1" placeholder="Éclats" required></label>
-        <button type="submit">Placer le pari</button>
+      <div class="apercu-gains" id="apercu-gains" hidden>
+        <div>Bonne issue<strong id="gain-base">?</strong></div>
+        <div id="case-ecart">Bon écart<strong id="gain-ecart">?</strong></div>
+        <div>Score exact<strong id="gain-exact">?</strong></div>
       </div>
-      <p id="apercu-pari" class="muet"></p>
-      <p id="retour-pari" class="muet"></p>
-    </form>`;
+      <p class="faible" id="retour-pari"></p>
+    </div>`;
 }
 
 function brancherPari(conteneur, match, cotes, reglages) {
-  const formulaire = conteneur.querySelector('#formulaire-pari');
+  const h = conteneur.querySelector('#pari-h');
+  const a = conteneur.querySelector('#pari-a');
+  const miseChamp = conteneur.querySelector('#pari-mise');
+  const bouton = conteneur.querySelector('#pari-envoyer');
   const retour = conteneur.querySelector('#retour-pari');
-  const apercu = conteneur.querySelector('#apercu-pari');
+  const apercu = conteneur.querySelector('#apercu-gains');
   const bonusEcart = Number(reglages?.bonus_ecart) || 1.5;
-  const bonusEcartNul = Number(reglages?.bonus_ecart_nul) || 1.25;
+  const bonusNul = Number(reglages?.bonus_ecart_nul) || 1.25;
   const bonusExact = Number(reglages?.bonus_score_exact) || 2;
 
-  const lireChamps = () => {
-    const d = new FormData(formulaire);
-    const ph = d.get('ph'), pa = d.get('pa');
-    return {
-      ph: ph === '' ? null : Number(ph),
-      pa: pa === '' ? null : Number(pa),
-      mise: Number(d.get('mise')) || 0,
-    };
-  };
-
-  formulaire.addEventListener('input', () => {
-    const { ph, pa, mise } = lireChamps();
-    if (ph === null || pa === null) { apercu.textContent = ''; return; }
-    const selection = ph > pa ? 'home' : ph < pa ? 'away' : 'draw';
-    const cote = selection === 'home' ? cotes.home_odds
-      : selection === 'away' ? cotes.away_odds : cotes.draw_odds;
-    if (cote == null) { apercu.textContent = 'Cote indisponible pour cette issue.'; return; }
-    const base = (mise || 0) * Number(cote);
-    const gains = mise > 0 ? (selection === 'draw'
-      ? ` · gain : ${nombre(base * bonusEcartNul, 2)} ✦ (bon écart d'office, bonus nul réduit ×${nombre(bonusEcartNul, 2)}) · score exact : ${nombre(base * bonusExact, 2)} ✦ (×${nombre(bonusExact, 1)})`
-      : ` · gain : ${nombre(base, 2)} ✦ · bon écart : ${nombre(base * bonusEcart, 2)} ✦ (×${nombre(bonusEcart, 1)}) · score exact : ${nombre(base * bonusExact, 2)} ✦ (×${nombre(bonusExact, 1)})`)
-      : '';
-    apercu.textContent = `Issue : ${SELECTIONS[selection]} (cote ${nombre(cote, 2)})${gains}`;
-  });
-
-  formulaire.addEventListener('submit', async (evt) => {
-    evt.preventDefault();
-    const { ph, pa, mise } = lireChamps();
-    if (ph === null || pa === null) {
-      retour.textContent = 'Indiquer un score pronostiqué.';
+  const majApercu = () => {
+    const [ph, pa] = [h.value.trim(), a.value.trim()];
+    [h, a].forEach((c) => c.classList.toggle('rempli', c.value.trim() !== ''));
+    if (ph === '' || pa === '') { apercu.hidden = true; return; }
+    const issue = Number(ph) > Number(pa) ? 'home'
+      : Number(ph) < Number(pa) ? 'away' : 'draw';
+    const cote = issue === 'home' ? cotes.home_odds
+      : issue === 'away' ? cotes.away_odds : cotes.draw_odds;
+    if (cote == null) {
+      apercu.hidden = true;
+      retour.textContent = 'Cote indisponible pour cette issue.';
       return;
     }
-    retour.textContent = 'Placement en cours…';
+    const base = (Number(miseChamp.value) || 0) * Number(cote);
+    const facteurEcart = issue === 'draw' ? bonusNul : bonusEcart;
+    apercu.hidden = false;
+    conteneur.querySelector('#gain-base').textContent = `${eclats(base)} ✦`;
+    conteneur.querySelector('#gain-ecart').textContent = `${eclats(base * facteurEcart)} ✦`;
+    conteneur.querySelector('#gain-exact').textContent = `${eclats(base * bonusExact)} ✦`;
+    conteneur.querySelector('#case-ecart').firstChild.textContent =
+      issue === 'draw' ? `Bon écart ×${nombre(facteurEcart, 2)} ` : 'Bon écart ';
+    retour.textContent = `Issue : ${ISSUES[issue]} · cote ${nombre(cote, 2)}`;
+  };
+
+  [h, a, miseChamp].forEach((c) => c.addEventListener('input', majApercu));
+
+  bouton.addEventListener('click', async () => {
+    const [ph, pa] = [h.value.trim(), a.value.trim()];
+    if (ph === '' || pa === '') {
+      retour.textContent = 'Indique un score pronostiqué.';
+      return;
+    }
+    bouton.disabled = true;
+    bouton.textContent = '…';
     try {
-      await placerPari(match.id, ph, pa, mise);
-      retour.textContent = `Pari placé (${ph}-${pa}) ! Visible dans Mes paris.`;
+      await placerPari(match.id, Number(ph), Number(pa), Number(miseChamp.value));
+      vibrer(18);
+      toast(`Pari ${ph}-${pa} placé`, 'succes');
       window.dispatchEvent(new Event('eclats-changes'));
-      formulaire.reset();
-      apercu.textContent = '';
+      pageMatch(conteneur, match.id);
     } catch (e) {
       retour.textContent = `Refusé : ${e.message}`;
+      toast(e.message, 'echec');
+      bouton.disabled = false;
+      bouton.textContent = 'Placer';
     }
   });
 }
 
-// ---------- Match terminé (7.3) ----------
+// ---------- Onglets ----------
 
-async function renduTermine(conteneur, match) {
-  const [cotesAvant, paris] = await Promise.all([
-    dernieresCotes([match.id], match.kickoff_at),
-    mesParisSurMatch(match.id),
-  ]);
-  const cotes = cotesAvant.get(match.id);
-  const LIBELLES = { pending: 'En cours', won: 'Gagné', lost: 'Perdu', void: 'Remboursé' };
-
-  conteneur.innerHTML = `
-    ${entete(match, `${match.score_home ?? '?'} - ${match.score_away ?? '?'}`)}
-    <section class="carte">
-      <h2>Mes paris sur ce match</h2>
-      ${paris.length === 0 ? '<p class="muet">Aucun pari placé sur ce match.</p>'
-        : paris.map((p) => `
-          <p class="statut-${p.status}">
-            Pronostic <strong>${echapper(p.predicted_home)}-${echapper(p.predicted_away)}</strong>
-            (${echapper(SELECTIONS[p.selection] || p.selection)}) ·
-            mise ${nombre(p.stake_eclats)} ✦ · cote ${nombre(p.odds_at_bet, 2)}
-            → <strong>${LIBELLES[p.status] || echapper(p.status)}</strong>
-            ${p.status === 'won' ? `: +${nombre(p.potential_payout * (p.bonus_multiplier || 1), 2)} ✦
-              <span class="muet">(${nombre(p.potential_payout, 2)} ✦ ·
-              ${echapper(libelleBonus(p, match.score_home, match.score_away))})</span>` : ''}
-          </p>`).join('')}
-    </section>
-    <section id="zone-comparatif">${chargement()}</section>
-    <section id="zone-h2h">${chargement()}</section>`;
-
-  const [comparatif, h2h] = await Promise.all([
-    blocComparatif(match, cotes, match.kickoff_at),
-    confrontations(match.home_team_id, match.away_team_id),
-  ]);
-  conteneur.querySelector('#zone-comparatif').innerHTML = `
-    <p class="muet">⏱ C'était la situation avant le match : les statistiques
-    ci-dessous sont figées à l'avant-match, pas recalculées après.</p>
-    ${comparatif}`;
-  conteneur.querySelector('#zone-h2h').innerHTML = blocH2H(h2h, match.id);
-  brancherVoirPlus(conteneur);
-}
-
-async function renduAutre(conteneur, match) {
-  conteneur.innerHTML = `
-    ${entete(match, match.status === 'live' ? '⚡' : 'vs')}
-    <p class="pastille">${echapper(STATUTS[match.status] || match.status)}</p>`;
-}
-
-// ---------- Bloc comparatif (7.2 point 3 / 7.3) ----------
-
-function statsDepuisMatchs(matchs, teamId) {
-  const s = { mp: 0, v: 0, n: 0, d: 0, sf: 0, sc: 0 };
-  for (const m of matchs) {
-    if (m.score_home === null || m.score_away === null) continue;
-    const estDomicile = m.home_team_id === teamId;
-    const [gf, ga] = estDomicile
-      ? [m.score_home, m.score_away] : [m.score_away, m.score_home];
-    s.mp += 1; s.sf += gf; s.sc += ga;
-    if (gf > ga) s.v += 1; else if (gf < ga) s.d += 1; else s.n += 1;
+async function chargerOnglet(conteneur, match, cotes, reglages) {
+  const zone = conteneur.querySelector('#contenu-onglet');
+  if (!zone) return;
+  zone.innerHTML = squelettes(2);
+  try {
+    zone.innerHTML = ongletActif === 'classement'
+      ? await vueClassement(match)
+      : await vueAvantMatch(match, cotes, reglages);
+    const bouton = zone.querySelector('#h2h-plus-bouton');
+    if (bouton) {
+      bouton.addEventListener('click', () => {
+        zone.querySelector('#h2h-plus').hidden = false;
+        bouton.remove();
+      });
+    }
+  } catch (e) {
+    zone.innerHTML = erreur(e);
   }
-  return s;
 }
 
-const moyenne = (somme, total) => total ? nombre(somme / total, 1) : '?';
+async function vueClassement(match) {
+  const lignes = await classementLigue(match.league_id);
+  if (!lignes.length) {
+    return '<p class="muet centre">Classement pas encore synchronisé '
+      + 'pour cette compétition.</p>';
+  }
+  const surligne = new Set([match.home_team_id, match.away_team_id]);
+  return `
+    <div class="carte tableau-defilant">
+      <table class="classement">
+        <thead><tr><th></th><th class="gauche">Équipe</th><th>Pts</th>
+          <th>J</th><th>V</th><th>N</th><th>D</th><th>±</th></tr></thead>
+        <tbody>
+          ${lignes.map((l) => `
+            <tr style="${surligne.has(l.team_id) ? 'background:var(--or-clair)' : ''}">
+              <td class="position">${echapper(l.position)}</td>
+              <td class="gauche"><a href="#/equipe/${l.team_id}">${echapper(l.team?.name)}</a></td>
+              <td><strong>${nombre(l.points)}</strong></td>
+              <td>${nombre(l.games_played)}</td>
+              <td>${nombre(l.wins)}</td>
+              <td>${nombre(l.draws)}</td>
+              <td>${nombre(l.losses)}</td>
+              <td>${(l.score_for ?? 0) - (l.score_against ?? 0) > 0 ? '+' : ''}${nombre((l.score_for ?? 0) - (l.score_against ?? 0))}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
 
-async function blocComparatif(match, cotes, avant) {
-  const fenetre = (await lireReglages())?.form_window_size || 5;
-  // Position au classement (championnats uniquement — classement actuel,
-  // pas historisé à l'avant-match)
+const moyenne = (somme, total) => (total ? nombre(somme / total, 1) : '?');
+
+async function vueAvantMatch(match, cotes, reglages) {
+  const avant = match.status === 'finished' ? match.kickoff_at : null;
+  const fenetre = reglages?.form_window_size || 5;
   const positions = match.league?.category === 'championnat'
     ? await positionsDansLigue(match.league_id,
         [match.home_team_id, match.away_team_id])
     : new Map();
+
   const equipes = [
     { id: match.home_team_id, nom: match.home?.name, rating: match.home?.rating,
-      camp: 'home', libelleCamp: 'domicile' },
+      camp: 'home', libelle: 'domicile', cote: cotes?.home_odds },
     { id: match.away_team_id, nom: match.away?.name, rating: match.away?.rating,
-      camp: 'away', libelleCamp: 'extérieur' },
+      camp: 'away', libelle: 'extérieur', cote: cotes?.away_odds },
   ];
 
   const colonnes = await Promise.all(equipes.map(async (e) => {
@@ -243,81 +329,78 @@ async function blocComparatif(match, cotes, avant) {
     const duCamp = tous.filter((m) => (e.camp === 'home'
       ? m.home_team_id === e.id : m.away_team_id === e.id));
 
-    // Moyennes : stats stockées pour un match à venir, recalcul historique
-    // pour la vue avant-match d'un match terminé
-    let global, compet;
+    let global = { mp: 0, sf: 0, sc: 0 };
+    let compet = { mp: 0, sf: 0, sc: 0 };
     if (avant) {
-      global = statsDepuisMatchs(tous, e.id);
-      compet = statsDepuisMatchs(dansCompet, e.id);
+      global = cumul(tous, e.id);
+      compet = cumul(dansCompet, e.id);
     } else {
       const [g, c] = await Promise.all([
         statsGlobales(e.id), statsCompetition(e.id, match.league_id)]);
-      global = g ? { mp: g.matches_played, sf: g.score_for, sc: g.score_against }
-                 : { mp: 0, sf: 0, sc: 0 };
-      compet = c ? { mp: c.matches_played, sf: c.score_for, sc: c.score_against }
-                 : { mp: 0, sf: 0, sc: 0 };
+      if (g) global = { mp: g.matches_played, sf: g.score_for, sc: g.score_against };
+      if (c) compet = { mp: c.matches_played, sf: c.score_for, sc: c.score_against };
     }
-
-    const coteEquipe = cotes
-      ? (e.camp === 'home' ? cotes.home_odds : cotes.away_odds) : null;
     const rang = positions.get(e.id);
     return `
       <div class="colonne-equipe">
-        <h3><a href="#/equipe/${e.id}">${echapper(e.nom)}</a></h3>
+        <h3>${echapper(e.nom)}</h3>
         ${rang ? `<p><a class="lien-classement" href="#/classement/${match.league_id}">
-          ${echapper(ordinal(rang.position))} du championnat
-          (${nombre(rang.points)} pts)</a></p>` : ''}
+          ${echapper(ordinal(rang.position))} · ${nombre(rang.points)} pts</a></p>` : ''}
         <p>Elo <strong>${nombre(e.rating, 1)}</strong>
-          · proba implicite ${probaImplicite(coteEquipe)}</p>
-        <p>Forme globale<br>${badgesForme(formeDepuisMatchs(tous, e.id, fenetre))}</p>
-        <p>Forme dans cette compétition<br>${badgesForme(formeDepuisMatchs(dansCompet, e.id, fenetre))}</p>
-        <p>Forme à ${e.libelleCamp}<br>${badgesForme(formeDepuisMatchs(duCamp, e.id, fenetre))}</p>
-        <p class="muet">Moy. marqués/encaissés<br>
-          global : ${moyenne(global.sf, global.mp)} / ${moyenne(global.sc, global.mp)}<br>
-          compétition : ${moyenne(compet.sf, compet.mp)} / ${moyenne(compet.sc, compet.mp)}</p>
+          <span class="faible">· ${probaImplicite(e.cote)}</span></p>
+        <p class="faible">Forme</p><p>${badgesForme(formeDepuisMatchs(tous, e.id, fenetre))}</p>
+        <p class="faible">Dans la compétition</p><p>${badgesForme(formeDepuisMatchs(dansCompet, e.id, fenetre))}</p>
+        <p class="faible">À ${e.libelle}</p><p>${badgesForme(formeDepuisMatchs(duCamp, e.id, fenetre))}</p>
+        <p class="faible">Moyennes pour / contre<br>
+          global ${moyenne(global.sf, global.mp)} / ${moyenne(global.sc, global.mp)}<br>
+          compét. ${moyenne(compet.sf, compet.mp)} / ${moyenne(compet.sc, compet.mp)}</p>
       </div>`;
   }));
 
+  const rencontres = (await confrontations(match.home_team_id, match.away_team_id))
+    .filter((x) => x.id !== match.id);
+
   return `
-    <h2>Face à face</h2>
-    <div class="comparatif carte">${colonnes.join('')}</div>`;
+    ${avant ? '<p class="faible centre">⏱ Situation telle qu\'elle était avant le match.</p>' : ''}
+    <div class="carte comparatif">${colonnes.join('')}</div>
+    <h2>Confrontations directes</h2>
+    ${rencontres.length ? blocH2H(rencontres)
+      : '<p class="muet centre">Aucune confrontation enregistrée.</p>'}`;
 }
 
-// ---------- Confrontations directes (7.2 point 4) ----------
-
-function blocH2H(rencontres, matchIdCourant) {
-  const liste = rencontres.filter((m) => m.id !== matchIdCourant);
-  if (!liste.length) {
-    return '<h2>Confrontations directes</h2><p class="muet">Aucune confrontation enregistrée.</p>';
+function cumul(matchs, teamId) {
+  const s = { mp: 0, sf: 0, sc: 0 };
+  for (const m of matchs) {
+    if (m.score_home === null || m.score_away === null) continue;
+    const estDom = m.home_team_id === teamId;
+    s.mp += 1;
+    s.sf += estDom ? m.score_home : m.score_away;
+    s.sc += estDom ? m.score_away : m.score_home;
   }
+  return s;
+}
+
+function blocH2H(liste) {
   const ligne = (m) => `
-    <a class="carte carte-match" href="#/match/${m.id}">
-      <div class="carte-match-entete">
-        <span class="muet">${echapper(m.league?.name)} · ${dateHeure(m.kickoff_at)}</span>
+    <a class="carte" href="#/match/${m.id}">
+      <div class="match-entete">
+        <span class="competition">${echapper(m.league?.name)}</span>
+        <span>${dateHeure(m.kickoff_at)}</span>
       </div>
-      <div class="carte-match-equipes">
-        <span>${echapper(m.home?.name)}</span>
-        <span class="score">${m.score_home ?? '?'} - ${m.score_away ?? '?'}</span>
-        <span>${echapper(m.away?.name)}</span>
+      <div class="match-corps">
+        <span class="faible centre">${echapper(m.home?.name)}</span>
+        <div class="cases-score">
+          <div class="score-fige">${m.score_home ?? '?'}</div>
+          <span class="deux-points">:</span>
+          <div class="score-fige">${m.score_away ?? '?'}</div>
+        </div>
+        <span class="faible centre">${echapper(m.away?.name)}</span>
       </div>
     </a>`;
-  const visibles = liste.slice(0, 10).map(ligne).join('');
-  const masques = liste.slice(10).map(ligne).join('');
-  return `
-    <h2>Confrontations directes</h2>
-    ${visibles}
-    ${masques ? `
-      <div id="h2h-plus" hidden>${masques}</div>
-      <button type="button" id="bouton-h2h-plus" class="secondaire">
-        Voir plus (${liste.length - 10})</button>` : ''}`;
-}
-
-function brancherVoirPlus(conteneur) {
-  const bouton = conteneur.querySelector('#bouton-h2h-plus');
-  if (bouton) {
-    bouton.addEventListener('click', () => {
-      conteneur.querySelector('#h2h-plus').hidden = false;
-      bouton.remove();
-    });
-  }
+  const visibles = liste.slice(0, 5).map(ligne).join('');
+  const masques = liste.slice(5).map(ligne).join('');
+  return `${visibles}
+    ${masques ? `<div id="h2h-plus" hidden>${masques}</div>
+      <button class="btn-fantome" id="h2h-plus-bouton" style="width:100%">
+        Voir les ${liste.length - 5} autres</button>` : ''}`;
 }

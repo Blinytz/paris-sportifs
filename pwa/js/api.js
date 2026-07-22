@@ -7,6 +7,41 @@ import { rest, patch, rpc, utilisateur } from './supabase.js';
 // être désambiguïsées par le nom de contrainte.
 const EMBED_MATCH = '*,league:leagues(*),home:teams!matches_home_team_id_fkey(*),away:teams!matches_away_team_id_fkey(*)';
 
+// Matchs d'une journée (bornes locales), tous statuts, pour le sélecteur
+// de dates de la page Paris.
+export function matchsDuJour(dateLocale, { sport, leagueId } = {}) {
+  const debut = new Date(`${dateLocale}T00:00:00`);
+  const fin = new Date(debut.getTime() + 86400000);
+  const params = {
+    select: EMBED_MATCH,
+    and: `(kickoff_at.gte.${debut.toISOString()},kickoff_at.lt.${fin.toISOString()})`,
+    order: 'kickoff_at.asc',
+    limit: '200',
+  };
+  if (leagueId) params.league_id = `eq.${leagueId}`;
+  if (sport) {
+    params.select = params.select.replace('league:leagues(*)', 'league:leagues!inner(*)');
+    params['league.sport'] = `eq.${sport}`;
+  }
+  return rest('matches', params);
+}
+
+// Paris réglés en attente de collecte (gains et remboursements)
+export function parisACollecter() {
+  return rest('bets', {
+    status: 'in.(won,void)',
+    collected_at: 'is.null',
+    select: `*,match:matches(${EMBED_MATCH})`,
+    order: 'resolved_at.desc',
+  });
+}
+
+// Collecte : sans argument, récolte tout ; sinon les paris désignés.
+// Retourne le total crédité (calculé côté serveur).
+export function collecter(betIds) {
+  return rpc('collect_winnings', betIds ? { p_bet_ids: betIds } : {});
+}
+
 export function listeLigues() {
   return rest('leagues', { active: 'is.true', order: 'sport.asc,category.asc,name.asc' });
 }

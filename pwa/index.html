@@ -2,8 +2,8 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101418">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#faf7f2">
   <title>Paris Sportifs ✦</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon-192.png">
@@ -15,19 +15,30 @@
 
   <div id="coquille" hidden>
     <header id="entete">
-      <a href="#/" class="logo">⚽🏉 Paris ✦</a>
-      <nav>
-        <a href="#/">Accueil</a>
-        <a href="#/mes-paris">Mes paris</a>
-        <a href="#/reglages">Réglages</a>
-      </nav>
+      <a href="#/" class="logo">Paris <span class="marque">✦</span></a>
       <div class="entete-droite">
-        <span id="solde" class="pastille">✦ …</span>
-        <button id="deconnexion" class="secondaire" title="Se déconnecter">⎋</button>
+        <span id="solde" title="Solde d'Éclats">…</span>
+        <button id="deconnexion" title="Se déconnecter" aria-label="Se déconnecter">⎋</button>
       </div>
     </header>
+
     <main id="app"></main>
+
+    <nav id="onglets">
+      <a href="#/" data-route="paris">
+        <span class="icone">⚽</span><span>Paris</span>
+      </a>
+      <a href="#/mes-paris" data-route="mes-paris">
+        <span class="icone">🎟️</span><span>Mes paris</span>
+        <span class="badge" id="badge-collecte" hidden></span>
+      </a>
+      <a href="#/reglages" data-route="reglages">
+        <span class="icone">⚙️</span><span>Réglages</span>
+      </a>
+    </nav>
   </div>
+
+  <div id="toasts"></div>
 
   <script type="module" src="js/app.js"></script>
 </body>

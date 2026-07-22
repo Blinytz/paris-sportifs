@@ -5,7 +5,7 @@
 // (règle 10 : rien n'est en dur côté serveur).
 
 import { lireReglages, sauverReglages } from '../api.js';
-import { chargement, echapper, erreur, nombre } from '../ui.js';
+import { echapper, erreur, nombre, squelettes, toast } from '../ui.js';
 
 const AIDE_K = "Contrôle à quel point un seul résultat fait bouger le rating d'une équipe. Faible (10-16) : ratings très stables, réagit peu aux surprises. Standard (24-32) : équilibre courant. Élevé (40-60) : très réactif, un seul résultat surprenant fait fortement bouger le rating, utile en début d'usage, mais risque de surréagir à un accident isolé.";
 const AIDE_TERRAIN = "Bonus fictif donné à l'équipe qui reçoit avant de calculer le favori. 0 : aucun avantage pris en compte. Faible (20-40) : léger avantage. Standard (65 foot / 50 rugby) : reflète la moyenne observée. Élevé (90-120+) : favorise fortement le domicile, au risque de sous-estimer les bonnes équipes à l'extérieur.";
@@ -40,7 +40,7 @@ export const CHAMPS = [
 ];
 
 export async function pageReglages(conteneur) {
-  conteneur.innerHTML = chargement();
+  conteneur.innerHTML = squelettes(3);
   try {
     const valeurs = await lireReglages();
     if (!valeurs) {
@@ -48,17 +48,17 @@ export async function pageReglages(conteneur) {
       return;
     }
     conteneur.innerHTML = `
-      <h1>Réglages du modèle</h1>
-      <p class="muet">Appliqués automatiquement au prochain run de sync,
-        sans redéploiement.</p>
+      <h1>Réglages</h1>
+      <p class="faible">Appliqués automatiquement à la prochaine
+        synchronisation, sans redéploiement.</p>
       <form id="formulaire-reglages">
         ${CHAMPS.map((c) => champ(c, valeurs[c.cle])).join('')}
         <div class="rangee-boutons">
-          <button type="submit">Enregistrer</button>
-          <button type="button" id="bouton-defauts" class="secondaire">
-            Réinitialiser aux valeurs par défaut</button>
+          <button type="submit" class="btn-or">Enregistrer</button>
+          <button type="button" id="bouton-defauts" class="btn-fantome">
+            Valeurs par défaut</button>
         </div>
-        <p id="retour-reglages" class="muet"></p>
+        <p id="retour-reglages" class="faible"></p>
       </form>`;
     brancher(conteneur);
   } catch (e) {
@@ -73,9 +73,9 @@ function champ(c, valeurActuelle) {
       <div class="rangee-mise">
         <input type="number" id="champ-${c.cle}" name="${c.cle}" step="${c.pas}"
                value="${echapper(valeurActuelle)}" required>
-        <span class="muet">défaut : ${nombre(c.defaut, String(c.pas).includes('.') ? 2 : 0)}</span>
+        <span class="defaut">défaut : ${nombre(c.defaut, String(c.pas).includes('.') ? 2 : 0)}</span>
       </div>
-      <p class="muet aide">${echapper(c.aide)}</p>
+      <p class="aide">${echapper(c.aide)}</p>
     </div>`;
 }
 
@@ -92,8 +92,10 @@ function brancher(conteneur) {
     try {
       await sauverReglages(valeurs);
       retour.textContent = 'Réglages enregistrés ✓';
+      toast('Réglages enregistrés', 'succes');
     } catch (e) {
       retour.textContent = `Échec : ${e.message}`;
+      toast(e.message, 'echec');
     }
   });
 

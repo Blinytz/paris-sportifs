@@ -20,6 +20,7 @@ create table teams (
   sport text not null check (sport in ('football', 'rugby')),
   external_id integer not null,
   name text not null,
+  logo_url text,
   rating numeric not null default 1500,
   matches_played integer not null default 0,
   updated_at timestamptz not null default now(),
@@ -82,7 +83,10 @@ create table bets (
     'pending', 'won', 'lost', 'void'
   )),
   placed_at timestamptz not null default now(),
-  resolved_at timestamptz
+  resolved_at timestamptz,
+  -- Collecte manuelle : les gains ne rejoignent le portefeuille que
+  -- lorsque l'utilisateur les récolte dans l'app (voir collect_winnings)
+  collected_at timestamptz
 );
 
 create index idx_bets_user on bets (user_id);

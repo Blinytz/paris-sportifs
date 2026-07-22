@@ -1,40 +1,74 @@
-// Point d'entrée : session, écran de connexion, header (solde), router.
+// Point d'entrée : session, écran de connexion, solde, badge de collecte,
+// router.
 
 import { connexion, deconnexion, utilisateur } from './supabase.js';
-import { soldeEclats } from './api.js';
+import { parisACollecter, soldeEclats } from './api.js';
 import { demarrerRouter } from './router.js';
-import { echapper, nombre } from './ui.js';
+import { animerSolde, echapper, eclats } from './ui.js';
 
-async function majSolde() {
+// Solde courant, tenu à jour ici : les pages l'utilisent comme point de
+// départ des animations de collecte.
+export const etat = { solde: 0 };
+
+async function majSolde({ anime = false } = {}) {
   const zone = document.getElementById('solde');
   try {
-    const solde = await soldeEclats();
-    zone.textContent = `${nombre(solde)} ✦`;
-    zone.title = `${nombre(solde)} Éclats`;
+    const nouveau = await soldeEclats();
+    if (anime && nouveau !== etat.solde) {
+      await animerSolde(etat.solde, nouveau);
+    } else {
+      zone.textContent = `${eclats(nouveau)} ✦`;
+    }
+    etat.solde = nouveau;
+    zone.title = `${eclats(nouveau)} Éclats`;
   } catch {
-    zone.textContent = '✦ ?';
+    zone.textContent = '✦';
   }
 }
 
-// Les pages déclenchent cet événement après un pari accepté
-window.addEventListener('eclats-changes', majSolde);
+async function majBadgeCollecte() {
+  const badge = document.getElementById('badge-collecte');
+  try {
+    const enAttente = await parisACollecter();
+    badge.hidden = enAttente.length === 0;
+    badge.textContent = enAttente.length;
+  } catch {
+    badge.hidden = true;
+  }
+}
+
+// Les pages émettent ces événements après une action sur le portefeuille
+window.addEventListener('eclats-changes', () => {
+  majSolde();
+  majBadgeCollecte();
+});
+// Émis une seule fois par récolte (même groupée) : anime le compteur
+window.addEventListener('eclats-collectes', () => {
+  majSolde({ anime: true });
+  majBadgeCollecte();
+});
 
 function afficherConnexion(message = '') {
   document.getElementById('coquille').hidden = true;
   const zone = document.getElementById('connexion');
   zone.hidden = false;
   zone.innerHTML = `
-    <form id="formulaire-connexion" class="carte">
-      <h1>Paris Sportifs ✦</h1>
-      <p class="muet">Compte partagé des PWA (Supabase).</p>
+    <form class="carte">
+      <h1>Paris <span style="color:var(--or-fonce)">✦</span></h1>
+      <p class="muet sous">Pronostics en Éclats, foot et rugby.</p>
       ${message ? `<p class="erreur">${echapper(message)}</p>` : ''}
-      <label>E-mail <input type="email" name="email" required autocomplete="username"></label>
-      <label>Mot de passe <input type="password" name="mdp" required autocomplete="current-password"></label>
-      <button type="submit">Se connecter</button>
+      <label>E-mail
+        <input type="email" name="email" required autocomplete="username"></label>
+      <label>Mot de passe
+        <input type="password" name="mdp" required autocomplete="current-password"></label>
+      <button type="submit" class="btn-or">Se connecter</button>
     </form>`;
   zone.querySelector('form').addEventListener('submit', async (evt) => {
     evt.preventDefault();
     const donnees = new FormData(evt.target);
+    const bouton = evt.target.querySelector('button');
+    bouton.disabled = true;
+    bouton.textContent = 'Connexion…';
     try {
       await connexion(donnees.get('email'), donnees.get('mdp'));
       demarrerApp();
@@ -48,6 +82,7 @@ function demarrerApp() {
   document.getElementById('connexion').hidden = true;
   document.getElementById('coquille').hidden = false;
   majSolde();
+  majBadgeCollecte();
   demarrerRouter();
 }
 

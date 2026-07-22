@@ -5,7 +5,12 @@ S'exécute juste après sync_matches.py dans le même job GitHub Actions.
 Sport-agnostique : règle tous les paris pending dont le match a atteint un
 état final.
 
-- Match cancelled/postponed -> void + remboursement intégral de la mise
+Depuis le 22/07/2026, le règlement ne crédite plus le portefeuille : il
+marque seulement le pari (won / lost / void) et son multiplicateur. Les
+Éclats ne rejoignent le solde que lorsque l'utilisateur les récolte dans
+l'app (fonction SQL collect_winnings, colonne bets.collected_at).
+
+- Match cancelled/postponed -> void, mise à récolter
 - Match finished, score connu -> comparaison pronostic / score réel :
     issue fausse                       -> lost (mise déjà débitée au pari)
     bonne issue (vainqueur ou nul)     -> won, gain = potential_payout
@@ -76,15 +81,6 @@ def _close_bet(db, bet, new_status, multiplier=None):
     return bool(changed)
 
 
-def _credit(db, bet, amount, source):
-    db.insert("eclats_ledger", [{
-        "user_id": bet["user_id"],
-        "amount": round(float(amount), 2),
-        "source": source,
-        "reference_id": bet["id"],
-    }])
-
-
 def settle_all(db, settings):
     pending = db.select("bets", {
         "status": "eq.pending",
@@ -95,10 +91,9 @@ def settle_all(db, settings):
         match = bet["match"]
         status = match["status"]
 
-        # Match annulé ou reporté -> void + remboursement
+        # Match annulé ou reporté -> void, mise à récolter par l'utilisateur
         if status in ("cancelled", "postponed"):
             if _close_bet(db, bet, "void"):
-                _credit(db, bet, bet["stake_eclats"], "paris_sportifs_remboursement")
                 counts["void"] += 1
             continue
 
@@ -121,14 +116,13 @@ def settle_all(db, settings):
 
         if gagne:
             if _close_bet(db, bet, "won", multiplier):
-                _credit(db, bet, float(bet["potential_payout"]) * multiplier,
-                        "paris_sportifs_gain")
-                counts["won"] += 1
+                counts["won"] += 1  # gain à récolter dans l'app
         else:
             if _close_bet(db, bet, "lost"):
                 counts["lost"] += 1  # mise déjà débitée au pari
 
-    log.info("Règlement terminé : %d gagnés, %d perdus, %d remboursés",
+    log.info("Règlement terminé : %d gagnés, %d perdus, %d remboursés "
+             "(gains à récolter dans l'app)",
              counts["won"], counts["lost"], counts["void"])
 
 
