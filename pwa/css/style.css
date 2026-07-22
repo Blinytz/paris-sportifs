@@ -218,9 +218,31 @@ a.carte:active { transform: scale(.995); }
   width: 3rem; height: 3rem; border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
   font-size: 1.35rem; font-weight: 800;
-  background: var(--fond-doux); border: 1px solid var(--bordure);
+  background: var(--fond-doux); border: 2px solid var(--bordure);
   font-variant-numeric: tabular-nums;
 }
+/* États d'un pronostic, lisibles à la couleur des cases */
+.score-fige.verrouille {
+  border-color: var(--bleu); background: #eaf2fb; color: var(--bleu);
+}
+.score-fige.gagne {
+  border-color: var(--vert); background: var(--vert-clair); color: var(--vert);
+}
+.score-fige.perdu {
+  border-color: var(--rouge); background: var(--rouge-clair); color: var(--rouge);
+}
+.score-fige.annule {
+  border-color: var(--texte-faible); background: var(--fond-doux);
+  color: var(--texte-faible);
+}
+.score-fige.joue { color: var(--texte-doux); }
+
+/* Mise engagée, sous les cases */
+.mise-mini {
+  font-size: .72rem; font-weight: 700; color: var(--or-fonce);
+  background: #fdf6e0; border-radius: 6px; padding: .05rem .4rem;
+}
+.mise-mini.ferme { background: var(--fond-doux); color: var(--texte-doux); }
 .deux-points { color: var(--texte-faible); font-weight: 700; }
 
 /* Cotes sous les cases (façon MPP) */

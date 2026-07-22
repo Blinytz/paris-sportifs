@@ -8,6 +8,7 @@ import {
   brouillonsSurMatchs, dernieresCotes, listeLigues, lireReglages,
   matchsDuJour, mesParisSurMatchs,
 } from '../api.js';
+import { nomLigue, trierLigues } from '../ordre-ligues.js';
 import { brancherCases, casesScore } from '../saisie.js';
 import {
   blason, cleJour, echapper, eclats, erreur, gainPari, heure, libelleBonus,
@@ -19,6 +20,18 @@ const JOURS_APRES = 9;
 
 const etat = { date: null, sport: '', leagueId: '' };
 let liguesCache = null;
+
+function decalerJour(pas) {
+  const [a, m, j] = etat.date.split('-').map(Number);
+  const d = new Date(a, m - 1, j);
+  d.setDate(d.getDate() + pas);
+  const limiteBasse = new Date(); limiteBasse.setDate(limiteBasse.getDate() - JOURS_AVANT);
+  const limiteHaute = new Date(); limiteHaute.setDate(limiteHaute.getDate() + JOURS_APRES);
+  if (d < limiteBasse.setHours(0, 0, 0, 0) || d > limiteHaute.setHours(23, 59, 59, 0)) {
+    return null;
+  }
+  return cleJour(d.toISOString());
+}
 
 export async function pageAccueil(conteneur) {
   etat.date = etat.date || cleJour(new Date().toISOString());
@@ -55,10 +68,10 @@ function bandeauFiltres() {
     `<button class="puce ${etat.sport === 'football' ? 'actif' : ''}" data-sport="football">⚽ Foot</button>`,
     `<button class="puce ${etat.sport === 'rugby' ? 'actif' : ''}" data-sport="rugby">🏉 Rugby</button>`,
   ];
-  for (const l of (liguesCache || []).filter(
-    (l) => !etat.sport || l.sport === etat.sport)) {
+  for (const l of trierLigues((liguesCache || []).filter(
+    (l) => !etat.sport || l.sport === etat.sport))) {
     puces.push(`<button class="puce ${etat.leagueId === l.id ? 'actif' : ''}"
-      data-ligue="${l.id}">${echapper(l.name)}</button>`);
+      data-ligue="${l.id}">${echapper(nomLigue(l))}</button>`);
   }
   return `<div class="filtres">${puces.join('')}</div>`;
 }
@@ -89,12 +102,60 @@ async function rendre(conteneur) {
   conteneur.innerHTML = `
     ${bandeauDates()}
     ${bandeauFiltres()}
-    <p class="faible centre">Ton score est enregistré au fil de la saisie
-      et modifiable jusqu'au coup d'envoi, où il devient un pari de
-      <strong>${eclats(mise)} ✦</strong>.</p>
-    ${liste}`;
+    <div id="jour-courant">${liste}</div>`;
   brancherBandeaux(conteneur);
   brancherSaisies(conteneur, mise);
+  brancherGlissement(conteneur);
+}
+
+// Glissement horizontal pour changer de jour : la page suit le doigt,
+// comme si les journées étaient posées côte à côte.
+function brancherGlissement(conteneur) {
+  const zone = conteneur.querySelector('#jour-courant');
+  if (!zone) return;
+  let departX = 0;
+  let departY = 0;
+  let horizontal = null;   // null tant que la direction n'est pas tranchée
+
+  zone.addEventListener('touchstart', (evt) => {
+    if (evt.touches.length !== 1) return;
+    departX = evt.touches[0].clientX;
+    departY = evt.touches[0].clientY;
+    horizontal = null;
+    zone.style.transition = 'none';
+  }, { passive: true });
+
+  zone.addEventListener('touchmove', (evt) => {
+    if (evt.touches.length !== 1) return;
+    const dx = evt.touches[0].clientX - departX;
+    const dy = evt.touches[0].clientY - departY;
+    if (horizontal === null) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      horizontal = Math.abs(dx) > Math.abs(dy) * 1.4;
+    }
+    if (!horizontal) return;
+    // Résistance en bout de course quand il n'y a plus de jour
+    const possible = decalerJour(dx < 0 ? 1 : -1) !== null;
+    zone.style.transform = `translateX(${possible ? dx : dx * 0.25}px)`;
+    zone.style.opacity = String(Math.max(0.4, 1 - Math.abs(dx) / 500));
+  }, { passive: true });
+
+  zone.addEventListener('touchend', (evt) => {
+    if (!horizontal) { zone.style.transform = ''; zone.style.opacity = ''; return; }
+    const dx = evt.changedTouches[0].clientX - departX;
+    const seuil = Math.min(110, window.innerWidth * 0.25);
+    const nouvelleDate = Math.abs(dx) > seuil ? decalerJour(dx < 0 ? 1 : -1) : null;
+    zone.style.transition = 'transform .22s ease, opacity .22s ease';
+    if (nouvelleDate) {
+      // La page finit de sortir dans le sens du doigt, puis le jour change
+      zone.style.transform = `translateX(${dx < 0 ? '-100%' : '100%'})`;
+      zone.style.opacity = '0';
+      setTimeout(() => { etat.date = nouvelleDate; rendre(conteneur); }, 180);
+    } else {
+      zone.style.transform = '';
+      zone.style.opacity = '';
+    }
+  });
 }
 
 function brancherBandeaux(conteneur) {
@@ -137,13 +198,30 @@ function carteMatch(m, cote, parisDuMatch, brouillon) {
       <span class="${issuePronostic === 'away' ? 'choisi' : ''}">${nombre(cote.away_odds, 2)}</span>
     </div>` : '';
 
+  // Couleur des cases selon l'état, pour tout lire d'un coup d'œil :
+  // vide, pronostic enregistré, pari verrouillé, puis gagné/perdu/annulé
+  let etatCases = 'vide';
+  if (termine && pari) {
+    etatCases = pari.status === 'won' ? 'gagne'
+      : pari.status === 'lost' ? 'perdu' : 'annule';
+  } else if (termine) etatCases = 'joue';
+  else if (enCours || (pari && !termine)) etatCases = 'verrouille';
+  else if (brouillon) etatCases = 'enregistre';
+
   const centre = ouvert
     ? casesScore(m, brouillon)
     : `<div class="cases-score">
-         <div class="score-fige">${termine || enCours ? m.score_home ?? '?' : '?'}</div>
+         <div class="score-fige ${etatCases}">${termine || enCours ? m.score_home ?? '?' : '?'}</div>
          <span class="deux-points">:</span>
-         <div class="score-fige">${termine || enCours ? m.score_away ?? '?' : '?'}</div>
+         <div class="score-fige ${etatCases}">${termine || enCours ? m.score_away ?? '?' : '?'}</div>
        </div>`;
+
+  // Mise engagée, sous le score : repère immédiatement les mises qui ne
+  // sont pas au montant habituel
+  const miseAffichee = pronostic
+    ? `<div class="mise-mini ${pari ? 'ferme' : ''}">${eclats(
+        pari ? pari.stake_eclats : pronostic.stake_eclats)} ✦</div>`
+    : '';
 
   return `
     <div class="carte carte-match" data-match="${m.id}">
@@ -157,7 +235,7 @@ function carteMatch(m, cote, parisDuMatch, brouillon) {
         <a class="equipe" href="#/equipe/${m.home_team_id}">
           ${blason(m.home)}<span class="nom">${echapper(m.home?.name)}</span>
         </a>
-        <div class="bloc-score">${centre}${cotesMini}</div>
+        <div class="bloc-score">${centre}${cotesMini}${miseAffichee}</div>
         <a class="equipe" href="#/equipe/${m.away_team_id}">
           ${blason(m.away)}<span class="nom">${echapper(m.away?.name)}</span>
         </a>

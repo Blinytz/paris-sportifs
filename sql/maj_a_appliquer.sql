@@ -1,7 +1,6 @@
 -- ============================================================
--- MISE À JOUR à coller dans l'éditeur SQL de Supabase sur une
--- base DÉJÀ installée. Rejouable sans risque (tout est idempotent).
--- N'efface aucune donnée : ajoute colonnes, table et fonctions.
+-- MISE À JOUR à coller dans l'éditeur SQL de Supabase.
+-- Rejouable sans risque : n'efface aucune donnée.
 -- ============================================================
 
 -- ============================================================
@@ -55,8 +54,8 @@ begin
   loop
     -- Pari gagné : mise × cote × bonus. Pari remboursé : la mise.
     v_montant := case v_bet.status
-      when 'won' then round(v_bet.potential_payout
-                            * coalesce(v_bet.bonus_multiplier, 1), 2)
+      when 'won' then ceil(v_bet.potential_payout
+                           * coalesce(v_bet.bonus_multiplier, 1))
       else v_bet.stake_eclats
     end;
 
@@ -231,7 +230,7 @@ begin
                         selection, stake_eclats, odds_at_bet, potential_payout)
       values (v_draft.user_id, v_draft.match_id, v_draft.predicted_home,
               v_draft.predicted_away, v_selection, v_draft.stake_eclats,
-              v_odd, round(v_draft.stake_eclats * v_odd, 2))
+              v_odd, ceil(v_draft.stake_eclats * v_odd))
       returning id into v_bet_id;
 
       insert into eclats_ledger (user_id, amount, source, reference_id)
@@ -248,3 +247,19 @@ end
 $$;
 
 revoke all on function validate_due_drafts() from public, anon, authenticated;
+
+-- ============================================================
+-- Compétitions ajoutées le 23/07/2026
+--
+-- Nations Championship : nouveau tournoi opposant les meilleures
+-- nations de l'hémisphère nord et sud, absent de la spec initiale
+-- (première édition en 2026). Identifiant retrouvé via probe_api.py.
+-- Pacific Nations Cup ajoutée dans la foulée : elle occupe la même
+-- fenêtre estivale et complète le calendrier international.
+-- ============================================================
+
+insert into leagues (sport, category, external_id, name, country)
+values
+  ('rugby', 'international', 124179, 'Nations Championship', 'World'),
+  ('rugby', 'international', 77374, 'Pacific Nations Cup', 'World')
+on conflict (external_id) do nothing;

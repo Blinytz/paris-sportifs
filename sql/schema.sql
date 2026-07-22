@@ -287,4 +287,6 @@ insert into leagues (sport, category, external_id, name, country) values
 ('rugby', 'international', 44185, 'Six Nations', 'World'),
 ('rugby', 'international', 48440, 'Six Nations U20', 'World'),
 ('rugby', 'international', 73119, 'Rugby Championship', 'World'),
+('rugby', 'international', 124179, 'Nations Championship', 'World'),
+('rugby', 'international', 77374, 'Pacific Nations Cup', 'World'),
 ('rugby', 'international', 59503, 'World Cup', 'World');

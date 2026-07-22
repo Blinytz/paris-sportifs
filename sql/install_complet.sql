@@ -1,6 +1,5 @@
 -- ============================================================
 -- INSTALLATION COMPLÈTE (base neuve) — fichier généré.
--- schema + rpc_place_bet + standings + refonte + brouillons + grants
 -- ============================================================
 
 -- ============================================================
@@ -292,6 +291,8 @@ insert into leagues (sport, category, external_id, name, country) values
 ('rugby', 'international', 44185, 'Six Nations', 'World'),
 ('rugby', 'international', 48440, 'Six Nations U20', 'World'),
 ('rugby', 'international', 73119, 'Rugby Championship', 'World'),
+('rugby', 'international', 124179, 'Nations Championship', 'World'),
+('rugby', 'international', 77374, 'Pacific Nations Cup', 'World'),
 ('rugby', 'international', 59503, 'World Cup', 'World');
 
 -- ============================================================
@@ -390,7 +391,7 @@ begin
   insert into bets (user_id, match_id, predicted_home, predicted_away,
                     selection, stake_eclats, odds_at_bet, potential_payout)
   values (v_user, p_match_id, p_home, p_away,
-          v_selection, p_stake, v_odd, round(p_stake * v_odd, 2))
+          v_selection, p_stake, v_odd, ceil(p_stake * v_odd))
   returning id into v_bet_id;
 
   insert into eclats_ledger (user_id, amount, source, reference_id)
@@ -501,8 +502,8 @@ begin
   loop
     -- Pari gagné : mise × cote × bonus. Pari remboursé : la mise.
     v_montant := case v_bet.status
-      when 'won' then round(v_bet.potential_payout
-                            * coalesce(v_bet.bonus_multiplier, 1), 2)
+      when 'won' then ceil(v_bet.potential_payout
+                           * coalesce(v_bet.bonus_multiplier, 1))
       else v_bet.stake_eclats
     end;
 
@@ -677,7 +678,7 @@ begin
                         selection, stake_eclats, odds_at_bet, potential_payout)
       values (v_draft.user_id, v_draft.match_id, v_draft.predicted_home,
               v_draft.predicted_away, v_selection, v_draft.stake_eclats,
-              v_odd, round(v_draft.stake_eclats * v_odd, 2))
+              v_odd, ceil(v_draft.stake_eclats * v_odd))
       returning id into v_bet_id;
 
       insert into eclats_ledger (user_id, amount, source, reference_id)

@@ -90,8 +90,6 @@ function rendre(conteneur, paris, brouillons = [], solde = 0) {
       ${rejetes.map(carteBrouillon).join('')}` : ''}
 
     ${enAttenteValidation.length ? `<h2>Pronostics enregistrés (${enAttenteValidation.length})</h2>
-      <p class="faible">Modifiables jusqu'au coup d'envoi, où ils
-        deviennent des paris fermes.</p>
       ${enAttenteValidation.map(carteBrouillon).join('')}` : ''}
 
     ${historique.length ? `<h2>Historique</h2>
