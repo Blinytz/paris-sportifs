@@ -8,7 +8,7 @@ import {
   brouillonsSurMatchs, dernieresCotes, listeLigues, lireReglages,
   matchsDuJour, mesParisSurMatchs,
 } from '../api.js';
-import { nomLigue, trierLigues } from '../ordre-ligues.js';
+import { embleme, nomLigue, trierLigues } from '../ordre-ligues.js';
 import { brancherCases, casesScore } from '../saisie.js';
 import {
   blason, cleJour, echapper, eclats, erreur, gainPari, heure, libelleBonus,
@@ -71,7 +71,7 @@ function bandeauFiltres() {
   for (const l of trierLigues((liguesCache || []).filter(
     (l) => !etat.sport || l.sport === etat.sport))) {
     puces.push(`<button class="puce ${etat.leagueId === l.id ? 'actif' : ''}"
-      data-ligue="${l.id}">${echapper(nomLigue(l))}</button>`);
+      data-ligue="${l.id}">${embleme(l)} ${echapper(nomLigue(l))}</button>`);
   }
   return `<div class="filtres">${puces.join('')}</div>`;
 }
@@ -227,7 +227,7 @@ function carteMatch(m, cote, parisDuMatch, brouillon) {
     <div class="carte carte-match" data-match="${m.id}">
       <div class="match-entete">
         <a class="competition" href="#/match/${m.id}">
-          ${m.league?.sport === 'rugby' ? '🏉' : '⚽'} ${echapper(m.league?.name || '')}
+          ${embleme(m.league)} ${echapper(nomLigue(m.league))}
         </a>
         <span>${etiquetteStatut(m)}</span>
       </div>

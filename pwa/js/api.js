@@ -215,6 +215,14 @@ export function placerPari(matchId, home, away, mise) {
   });
 }
 
+// Tous les mouvements du portefeuille, pour la courbe d'évolution
+export function mouvementsLedger() {
+  return rest('eclats_ledger', {
+    select: 'amount,source,created_at',
+    order: 'created_at.asc',
+  });
+}
+
 // Solde = somme de toutes les entrées du ledger de l'utilisateur (règle 8).
 export async function soldeEclats() {
   if (!utilisateur()) return 0;

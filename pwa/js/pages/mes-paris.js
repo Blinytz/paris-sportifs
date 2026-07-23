@@ -6,6 +6,7 @@
 import {
   collecter, mesParis, soldeEclats, supprimerBrouillon, tousLesBrouillons,
 } from '../api.js';
+import { embleme, nomLigue } from '../ordre-ligues.js';
 import {
   blason, dateHeure, echapper, eclats, envoyerPieces, erreur, gainPari,
   libelleBonus, squelettes, toast, vide,
@@ -129,7 +130,7 @@ function carteBrouillon(d) {
       <div class="carte" data-brouillon="${d.id}">
         <div class="match-entete">
           <a class="competition" href="#/match/${d.match_id}">
-            ${m?.league?.sport === 'rugby' ? '🏉' : '⚽'} ${echapper(m?.league?.name || '')}
+            ${embleme(m?.league)} ${echapper(nomLigue(m?.league))}
           </a>
           <span>${dateHeure(m?.kickoff_at)}</span>
         </div>
@@ -157,7 +158,7 @@ function carteBrouillon(d) {
     <a class="carte" href="#/match/${d.match_id}">
       <div class="match-entete">
         <span class="competition">
-          ${m?.league?.sport === 'rugby' ? '🏉' : '⚽'} ${echapper(m?.league?.name || '')}
+          ${embleme(m?.league)} ${echapper(nomLigue(m?.league))}
         </span>
         <span>${dateHeure(m?.kickoff_at)}</span>
       </div>
@@ -190,7 +191,7 @@ function cartePari(p, recoltable = false) {
     <div class="carte" data-pari="${p.id}">
       <div class="match-entete">
         <a class="competition" href="#/match/${p.match_id}">
-          ${m?.league?.sport === 'rugby' ? '🏉' : '⚽'} ${echapper(m?.league?.name || '')}
+          ${embleme(m?.league)} ${echapper(nomLigue(m?.league))}
         </a>
         <span>${dateHeure(m?.kickoff_at)}</span>
       </div>

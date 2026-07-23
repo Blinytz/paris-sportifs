@@ -59,6 +59,38 @@ const ORDRE = [
 
 const RANG = new Map(ORDRE.map((id, i) => [id, i]));
 
+// Emblème affiché devant chaque compétition. Par identifiant pour les
+// compétitions supranationales (une confédération n'a pas de drapeau),
+// sinon par pays.
+const EMBLEME_PAR_LIGUE = {
+  2486: '🇪🇺', 3337: '🇪🇺', 722432: '🇪🇺',   // coupes d'Europe de clubs
+  4188: '🇪🇺', 5039: '🇪🇺',                  // Euro, Ligue des nations
+  11847: '🌎', 10145: '🌎',                  // CONMEBOL
+  8443: '🌎', 19506: '🌎', 456920: '🌎',      // Copa America, CONCACAF
+  5890: '🌍',                                // Coupe d'Afrique
+  6741: '🌏',                                // Coupe d'Asie
+  1635: '🏆', 59503: '🏆',                    // Coupes du monde
+  46738: '🇪🇺', 45036: '🇪🇺',                 // coupes d'Europe de rugby
+  44185: '🇪🇺', 48440: '🇪🇺',                 // Tournois des Six Nations
+  73119: '🌏',                               // Rugby Championship
+  124179: '🌍',                              // Nations Championship
+  77374: '🌊',                               // Pacific Nations Cup
+};
+
+const EMBLEME_PAR_PAYS = {
+  France: '🇫🇷', England: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', Spain: '🇪🇸', Germany: '🇩🇪',
+  Italy: '🇮🇹', USA: '🇺🇸', Brazil: '🇧🇷', Mexico: '🇲🇽', Japan: '🇯🇵',
+  'South Korea': '🇰🇷', Australia: '🇦🇺', Portugal: '🇵🇹',
+  Netherlands: '🇳🇱', Belgium: '🇧🇪', Argentina: '🇦🇷', Europe: '🇪🇺',
+};
+
+export function embleme(ligue) {
+  if (!ligue) return '';
+  if (EMBLEME_PAR_LIGUE[ligue.external_id]) return EMBLEME_PAR_LIGUE[ligue.external_id];
+  if (EMBLEME_PAR_PAYS[ligue.country]) return EMBLEME_PAR_PAYS[ligue.country];
+  return ligue.sport === 'rugby' ? '🏉' : '⚽';
+}
+
 // Deux compétitions portent le nom « Serie A » : on précise le pays pour
 // les distinguer dans les filtres.
 const NOMS_AMBIGUS = new Set(['Serie A', 'World Cup']);

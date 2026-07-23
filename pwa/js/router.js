@@ -7,6 +7,7 @@ import { pageEquipe } from './pages/equipe.js';
 import { pageMatch } from './pages/match.js';
 import { pageMesParis } from './pages/mes-paris.js';
 import { pageReglages } from './pages/reglages.js';
+import { pageStats } from './pages/stats.js';
 
 const ROUTES = [
   { motif: /^\/?$/, rendu: pageAccueil, onglet: 'paris' },
@@ -15,6 +16,7 @@ const ROUTES = [
   { motif: /^\/classement\/([0-9a-f-]+)$/, rendu: pageClassement, onglet: 'paris' },
   { motif: /^\/match\/([0-9a-f-]+)$/, rendu: pageMatch, onglet: 'paris' },
   { motif: /^\/mes-paris$/, rendu: pageMesParis, onglet: 'mes-paris' },
+  { motif: /^\/stats$/, rendu: pageStats, onglet: 'stats' },
   { motif: /^\/reglages$/, rendu: pageReglages, onglet: 'reglages' },
 ];
 

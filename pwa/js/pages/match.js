@@ -7,6 +7,7 @@ import {
   enregistrerBrouillon, lireBrouillon, lireMatch, lireReglages, matchsEquipe,
   mesParisSurMatch, positionsDansLigue, statsCompetition, statsGlobales,
 } from '../api.js';
+import { embleme, nomLigue } from '../ordre-ligues.js';
 import { brancherCases, casesScore } from '../saisie.js';
 import {
   badgesForme, blason, dateHeure, echapper, eclats, envoyerPieces, erreur,
@@ -54,8 +55,8 @@ function rendre(conteneur, match, cotes, paris, reglages, brouillon) {
   conteneur.innerHTML = `
     <div class="carte">
       <div class="match-entete">
-        <span class="competition">${match.league?.sport === 'rugby' ? '🏉' : '⚽'}
-          ${echapper(match.league?.name)}</span>
+        <span class="competition">${embleme(match.league)}
+          ${echapper(nomLigue(match.league))}</span>
         <span>${echapper(STATUTS[match.status] || dateHeure(match.kickoff_at))}</span>
       </div>
       <div class="match-corps">
