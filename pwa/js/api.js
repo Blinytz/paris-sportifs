@@ -295,6 +295,11 @@ export function listePaliers() {
   return rest('paliers', { order: 'idx.asc' });
 }
 
+// Modifie le seuil et/ou la prime d'un palier (page Réglages)
+export function sauverPalier(idx, valeurs) {
+  return patch('paliers', { idx: `eq.${idx}` }, valeurs);
+}
+
 // Points de pronostiqueur (calcul serveur, source de vérité)
 export function pointsPronostiqueur() {
   return rpc('pronostiqueur_points');

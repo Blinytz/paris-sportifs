@@ -16,6 +16,7 @@ const AIDE_NUL_RUGBY = "Le nul est pariable au rugby aussi, mais il est rare : c
 const AIDE_BONUS = "Multiplicateurs du pari sur score. Bonne issue seule : gain = mise × cote. Bon écart signé en plus (ex. 1-0 pronostiqué, 2-1 réel) : gain × bonus écart. Score exact : gain × bonus score exact. Un pronostic de nul gagnant a d'office le bon écart (0) : il utilise le bonus écart nul, réduit exprès pour ne pas rendre le pari nul systématiquement trop rentable.";
 const AIDE_MISE = "Montant misé automatiquement depuis l'accueil dès que les deux cases de score sont remplies. Pour miser un autre montant sur un match précis, ouvrir sa page et utiliser le formulaire détaillé.";
 const AIDE_BONUS_RUGBY = "Au rugby les scores sont élevés : trouver le score exact est quasi impossible, d'où un bonus très fort (×10 par défaut). Le « bon écart » s'y juge par tranche de points : 0-7, 8-14, 15-21, 22-28, 29-40, plus de 40. Pronostiquer un écart dans la bonne tranche suffit pour décrocher le bonus.";
+const AIDE_PP = "Points de pronostiqueur gagnés à chaque pari réglé : ils font monter les paliers du profil et ne redescendent jamais. Le point de base récompense la régularité, les bonus récompensent l'adresse. Augmenter ces valeurs accélère toute la progression ; les baisser la ralentit.";
 const AIDE_FORME ="Nombre de matchs pris en compte pour calculer \"la forme actuelle\" d'une équipe. Petite fenêtre (3) : très réactive mais bruitée. Grande fenêtre (10) : tendance lissée mais plus lente à refléter un vrai changement.";
 
 // Valeurs par défaut de la section 6 de la spec (bouton réinitialiser)
@@ -40,6 +41,10 @@ export const CHAMPS = [
   { cle: 'bonus_score_exact_rugby', libelle: 'Bonus score exact (rugby)', defaut: 10, pas: 0.5, aide: AIDE_BONUS_RUGBY },
   { cle: 'form_window_size', libelle: 'Fenêtre de forme récente', defaut: 5, pas: 1, aide: AIDE_FORME },
   { cle: 'default_stake', libelle: 'Mise des paris rapides', defaut: 100, pas: 10, aide: AIDE_MISE },
+  { cle: 'pp_par_pari', libelle: 'Points par pari réglé', defaut: 10, pas: 1, aide: AIDE_PP },
+  { cle: 'pp_bonne_issue', libelle: 'Points bonus : bonne issue', defaut: 15, pas: 1, aide: AIDE_PP },
+  { cle: 'pp_bon_ecart', libelle: 'Points bonus : bon écart', defaut: 25, pas: 1, aide: AIDE_PP },
+  { cle: 'pp_score_exact', libelle: 'Points bonus : score exact', defaut: 50, pas: 1, aide: AIDE_PP },
 ];
 
 export async function pageReglages(conteneur) {
