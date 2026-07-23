@@ -124,9 +124,10 @@ create policy "odds_read_all" on odds_generated for select using (auth.role() = 
 -- Écriture sur ces 4 tables réservée au rôle service (le script de sync), jamais au client
 -- (pas de policy insert/update pour le rôle authenticated = refusé par défaut)
 
--- bets : chacun ne voit et ne modifie que ses propres paris
+-- bets : chacun ne voit que ses propres paris. Toute création passe par
+-- place_bet(), qui vérifie atomiquement la cote, le solde et le débit.
 create policy "bets_select_own" on bets for select using (auth.uid() = user_id);
-create policy "bets_insert_own" on bets for insert with check (auth.uid() = user_id);
+revoke insert on bets from authenticated;
 -- pas de policy update/delete côté client : la résolution des paris se fait uniquement
 -- via le script de settlement (rôle service, qui bypass RLS)
 
@@ -134,6 +135,30 @@ create policy "bets_insert_own" on bets for insert with check (auth.uid() = user
 create policy "ledger_select_own" on eclats_ledger for select using (auth.uid() = user_id);
 -- pas de policy insert côté client : toute écriture de solde passe par le service role
 -- (évite qu'un client triche sur son propre solde d'Éclats)
+
+-- Compte(s) autorisé(s) à administrer les réglages économiques.
+-- Aucune écriture client : l'ajout initial se fait explicitement depuis
+-- l'éditeur SQL Supabase, avec l'UUID du propriétaire.
+create table app_admins (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+alter table app_admins enable row level security;
+revoke all on app_admins from anon, authenticated;
+
+create or replace function is_app_admin()
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1 from app_admins where user_id = auth.uid()
+  );
+$$;
+revoke all on function is_app_admin() from public, anon;
+grant execute on function is_app_admin() to authenticated;
 
 -- Paramètres du modèle, modifiables via la page réglages de la PWA.
 -- Une seule ligne (singleton). Le script de sync lit ces valeurs à
@@ -164,6 +189,10 @@ create table model_settings (
   -- Mise appliquée automatiquement par les paris rapides (accueil)
   default_stake numeric not null default 100,
   form_window_size integer not null default 5,
+  pp_par_pari numeric not null default 10,
+  pp_bonne_issue numeric not null default 15,
+  pp_bon_ecart numeric not null default 25,
+  pp_score_exact numeric not null default 50,
   updated_at timestamptz not null default now()
 );
 
@@ -175,9 +204,9 @@ insert into model_settings (id) values ('default');
 alter table model_settings enable row level security;
 create policy "settings_read_auth" on model_settings
   for select using (auth.role() = 'authenticated');
-create policy "settings_update_auth" on model_settings
-  for update using (auth.role() = 'authenticated')
-  with check (auth.role() = 'authenticated');
+create policy "settings_update_admin" on model_settings
+  for update using (is_app_admin())
+  with check (is_app_admin());
 
 -- Statistiques par équipe ET par compétition, recalculées après chaque
 -- match terminé de cette équipe dans cette compétition. La vue globale

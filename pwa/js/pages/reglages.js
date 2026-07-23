@@ -4,7 +4,7 @@
 // Un changement s'applique automatiquement au prochain run des scripts
 // (règle 10 : rien n'est en dur côté serveur).
 
-import { lireReglages, sauverReglages } from '../api.js';
+import { lireReglages, sauverReglages, listePaliers, sauverPalier } from '../api.js';
 import { echapper, erreur, nombre, squelettes, toast } from '../ui.js';
 
 const AIDE_K = "Contrôle à quel point un seul résultat fait bouger le rating d'une équipe. Faible (10-16) : ratings très stables, réagit peu aux surprises. Standard (24-32) : équilibre courant. Élevé (40-60) : très réactif, un seul résultat surprenant fait fortement bouger le rating, utile en début d'usage, mais risque de surréagir à un accident isolé.";
@@ -50,7 +50,7 @@ export const CHAMPS = [
 export async function pageReglages(conteneur) {
   conteneur.innerHTML = squelettes(3);
   try {
-    const valeurs = await lireReglages();
+    const [valeurs, paliers] = await Promise.all([lireReglages(), listePaliers()]);
     if (!valeurs) {
       conteneur.innerHTML = '<p class="erreur">model_settings introuvable : exécuter sql/schema.sql.</p>';
       return;
@@ -61,17 +61,37 @@ export async function pageReglages(conteneur) {
         synchronisation, sans redéploiement.</p>
       <form id="formulaire-reglages">
         ${CHAMPS.map((c) => champ(c, valeurs[c.cle])).join('')}
+        <h2>Progression et primes</h2>
+        <p class="faible">Les seuils sont des points cumulés. Les primes ne sont
+          créditées qu'une fois, lorsque le palier est atteint puis réclamé.</p>
+        ${paliers.map(champPalier).join('')}
         <div class="rangee-boutons">
           <button type="submit" class="btn-or">Enregistrer</button>
           <button type="button" id="bouton-defauts" class="btn-fantome">
-            Valeurs par défaut</button>
+            Réinitialiser les réglages du modèle</button>
         </div>
         <p id="retour-reglages" class="faible"></p>
       </form>`;
-    brancher(conteneur);
+    brancher(conteneur, paliers);
   } catch (e) {
     conteneur.innerHTML = erreur(e);
   }
+}
+
+function champPalier(p) {
+  return `<fieldset class="carte champ-reglage" data-palier="${p.idx}">
+    <legend><strong>${echapper(p.name)}</strong></legend>
+    <div class="grille-2">
+      <label>Seuil de points
+        <input type="number" name="palier-${p.idx}-pp" min="0" step="1"
+          value="${echapper(p.pp_min)}" required>
+      </label>
+      <label>Prime d'Éclats
+        <input type="number" name="palier-${p.idx}-bonus" min="0" step="1"
+          value="${echapper(p.eclats_bonus)}" required>
+      </label>
+    </div>
+  </fieldset>`;
 }
 
 function champ(c, valeurActuelle) {
@@ -87,7 +107,7 @@ function champ(c, valeurActuelle) {
     </div>`;
 }
 
-function brancher(conteneur) {
+function brancher(conteneur, paliers) {
   const formulaire = conteneur.querySelector('#formulaire-reglages');
   const retour = conteneur.querySelector('#retour-reglages');
 
@@ -96,9 +116,25 @@ function brancher(conteneur) {
     const donnees = new FormData(formulaire);
     const valeurs = {};
     for (const c of CHAMPS) valeurs[c.cle] = Number(donnees.get(c.cle));
+    const nouveauxPaliers = paliers.map((p) => ({
+      idx: p.idx,
+      pp_min: Number(donnees.get(`palier-${p.idx}-pp`)),
+      eclats_bonus: Number(donnees.get(`palier-${p.idx}-bonus`)),
+    }));
+    const ordreInvalide = nouveauxPaliers.some((p, i) =>
+      p.pp_min < 0 || p.eclats_bonus < 0 ||
+      (i > 0 && p.pp_min <= nouveauxPaliers[i - 1].pp_min));
+    if (ordreInvalide) {
+      retour.textContent = 'Les seuils doivent être positifs et strictement croissants.';
+      toast('Ordre des paliers invalide', 'echec');
+      return;
+    }
     retour.textContent = 'Enregistrement…';
     try {
       await sauverReglages(valeurs);
+      await Promise.all(nouveauxPaliers.map((p) => sauverPalier(p.idx, {
+        pp_min: p.pp_min, eclats_bonus: p.eclats_bonus,
+      })));
       retour.textContent = 'Réglages enregistrés ✓';
       toast('Réglages enregistrés', 'succes');
     } catch (e) {

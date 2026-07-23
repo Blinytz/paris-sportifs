@@ -472,6 +472,9 @@ details.carte summary {
   cursor: pointer; display: flex; justify-content: space-between;
   gap: .5rem; flex-wrap: wrap; font-size: .9rem;
 }
+.grille-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+.grille-2 label { display: grid; gap: .35rem; color: var(--texte-doux); font-size: .78rem; }
+@media (max-width: 480px) { .grille-2 { grid-template-columns: 1fr; } }
 
 /* ---------- Statistiques ---------- */
 .bloc-resume { padding: 1.2rem; }

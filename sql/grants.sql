@@ -17,7 +17,8 @@ grant select on leagues, teams, matches, odds_generated, standings,
   bets, eclats_ledger, team_competition_stats, team_global_stats
   to authenticated;
 
--- Réglages du modèle : lisibles et modifiables depuis la page Réglages
+-- Réglages du modèle : le privilège ouvre la requête, la policy RLS
+-- is_app_admin() la limite au propriétaire déclaré.
 grant select, update on model_settings to authenticated;
 
 -- Le rôle service (scripts de sync et de règlement) a tous les droits,

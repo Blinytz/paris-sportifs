@@ -1,9 +1,10 @@
 -- ============================================================
+-- Prérequis : sql/securite_administration.sql a créé is_app_admin().
 -- Paliers réglables depuis la page Réglages (23/07/2026)
 --
 -- Même principe que le reste du modèle : rien n'est figé dans le code.
 -- Le barème des points de pronostiqueur rejoint model_settings, et les
--- seuils/primes de chaque palier deviennent modifiables par l'utilisateur.
+-- seuils/primes de chaque palier deviennent modifiables par l'administrateur.
 -- ============================================================
 
 -- 1. Barème des points de pronostiqueur (était en dur dans la fonction)
@@ -42,8 +43,9 @@ grant execute on function pronostiqueur_points() to authenticated;
 -- Seules ces deux colonnes sont censées bouger ; les noms et l'ordre des
 -- paliers restent définis par le seed (relancer ce fichier les restaure).
 drop policy if exists "paliers_update" on paliers;
-create policy "paliers_update" on paliers
-  for update using (auth.role() = 'authenticated')
-  with check (auth.role() = 'authenticated');
+drop policy if exists "paliers_update_admin" on paliers;
+create policy "paliers_update_admin" on paliers
+  for update using (is_app_admin())
+  with check (is_app_admin());
 
 grant update on paliers to authenticated;
