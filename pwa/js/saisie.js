@@ -21,12 +21,17 @@ export function chiffresAttendus(sport) {
   return sport === 'rugby' ? 2 : 1;
 }
 
-// Deux cases de score, pré-remplies par le brouillon éventuel
-export function casesScore(match, brouillon, { taille = '' } = {}) {
+// Deux cases de score, pré-remplies par le brouillon éventuel.
+// data-mise porte la mise effective : celle du brouillon existant (qui
+// est PRÉSERVÉE lors d'une modification de score) ou, à défaut, la mise
+// par défaut passée en paramètre pour un nouveau pronostic.
+export function casesScore(match, brouillon, { taille = '', mise = 100 } = {}) {
   const val = (v) => (v === undefined || v === null ? '' : v);
+  const miseEffective = brouillon?.stake_eclats ?? mise;
   return `
     <div class="cases-score" data-match="${match.id}"
-         data-sport="${echapper(match.league?.sport || 'football')}">
+         data-sport="${echapper(match.league?.sport || 'football')}"
+         data-mise="${echapper(miseEffective)}">
       <input class="case-score ${taille}" data-camp="home" type="number"
              min="0" max="199" inputmode="numeric"
              value="${val(brouillon?.predicted_home)}"
@@ -72,7 +77,10 @@ export function brancherCases(racine, { mise, surEtat, surChangement } = {}) {
         dire('Complète les deux cases');
         return;
       } else {
-        await enregistrerBrouillon(bloc.dataset.match, Number(h), Number(a), mise);
+        // Mise lue à chaud sur le bloc : préserve la mise du brouillon
+        // existant, ou reflète un changement fait entre-temps.
+        const stake = Number(bloc.dataset.mise) || mise || 100;
+        await enregistrerBrouillon(bloc.dataset.match, Number(h), Number(a), stake);
         dire('Enregistré ✓', 'ok');
         if (surChangement) surChangement(Number(h), Number(a));
       }

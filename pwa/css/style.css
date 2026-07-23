@@ -513,6 +513,79 @@ details.carte summary {
 .ligne-equipe a { flex: 1; font-weight: 600; }
 .ligne-equipe a:hover { color: var(--or-fonce); }
 
+/* ---------- Profil : paliers et badges ---------- */
+.carte-palier { padding: 1.4rem 1rem; }
+.ecusson-palier {
+  width: 64px; height: 64px; margin: 0 auto .5rem;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 1.4rem; font-weight: 800; color: #fff;
+  background: var(--accent-palier); box-shadow: var(--ombre);
+}
+.nom-palier { font-size: 1.3rem; font-weight: 800; letter-spacing: -.01em; }
+.barre-progression {
+  height: 9px; background: var(--fond-doux); border-radius: 999px;
+  overflow: hidden; margin: .7rem auto .4rem; max-width: 20rem;
+}
+.barre-remplie {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-palier), var(--or));
+  transition: width .5s ease;
+}
+
+.echelle { padding: .3rem .6rem; }
+.ligne-palier {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .45rem .1rem; border-top: 1px solid var(--bordure);
+}
+.ligne-palier:first-child { border-top: 0; }
+.ligne-palier .nom { flex: 1; font-weight: 600; font-size: .9rem; }
+.ligne-palier .seuil { font-size: .72rem; }
+.pastille-division {
+  width: 30px; height: 30px; border-radius: 50%; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .72rem; font-weight: 800; flex: 0 0 auto;
+}
+.palier-verrouille { opacity: .5; }
+.palier-courant {
+  background: var(--or-clair); margin: 0 -.6rem; padding-left: .7rem;
+  padding-right: .7rem; border-radius: 10px; border-top-color: transparent;
+}
+.palier-courant .nom { color: var(--or-fonce); }
+
+.grille-badges {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: .5rem;
+}
+.badge-carte {
+  background: var(--carte); border: 1px solid var(--bordure);
+  border-radius: 12px; padding: .7rem .5rem; text-align: center;
+  display: flex; flex-direction: column; gap: .2rem; box-shadow: var(--ombre);
+}
+.badge-carte.verrouille { opacity: .55; background: var(--fond-doux); box-shadow: none; }
+.badge-emoji { font-size: 1.6rem; line-height: 1; }
+.badge-nom { font-size: .78rem; font-weight: 700; }
+.badge-aide { font-size: .66rem; color: var(--texte-doux); line-height: 1.2; }
+
+/* ---------- Sélecteur de mise (page Paris) ---------- */
+.mises-rapides {
+  display: flex; gap: .35rem; overflow-x: auto; padding-bottom: .3rem;
+  margin-bottom: .5rem; scrollbar-width: none; align-items: center;
+}
+.mises-rapides::-webkit-scrollbar { display: none; }
+.mises-rapides .etiquette {
+  font-size: .72rem; color: var(--texte-faible); flex: 0 0 auto; font-weight: 600;
+}
+.puce-mise {
+  flex: 0 0 auto; padding: .3rem .7rem; border-radius: 999px;
+  background: var(--carte); border: 1px solid var(--bordure);
+  color: var(--texte-doux); font-size: .82rem; font-weight: 700;
+  font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.puce-mise.actif {
+  background: linear-gradient(135deg, #fdf3d4, var(--or-clair));
+  border-color: #e9d489; color: var(--or-fonce);
+}
+
 /* ---------- Connexion ---------- */
 #connexion {
   display: flex; min-height: 100vh; align-items: center;

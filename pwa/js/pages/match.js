@@ -178,7 +178,7 @@ function blocPronostic(match, cotes, reglages, brouillon) {
       <h2 style="margin-top:0">Mon pronostic</h2>
       <div class="match-corps">
         <span class="faible centre">${echapper(match.home?.name)}</span>
-        ${casesScore(match, brouillon)}
+        ${casesScore(match, brouillon, { mise })}
         <span class="faible centre">${echapper(match.away?.name)}</span>
       </div>
       <div class="rangee-mise" style="margin-top:.8rem">
@@ -244,9 +244,13 @@ function brancherPronostic(conteneur, match, cotes, reglages, brouillon) {
   });
   champs.forEach((c) => c.addEventListener('input', majApercu));
 
-  // Changer la mise réenregistre le brouillon existant
+  // Changer la mise réenregistre le brouillon existant, et met à jour la
+  // mise portée par les cases pour qu'une modif de score ultérieure la
+  // conserve (au lieu de retomber sur la mise par défaut).
+  const blocCases = conteneur.querySelector('.cases-score');
   let minuteurMise = null;
   miseChamp.addEventListener('input', () => {
+    if (blocCases) blocCases.dataset.mise = Number(miseChamp.value) || 100;
     majApercu();
     clearTimeout(minuteurMise);
     minuteurMise = setTimeout(async () => {

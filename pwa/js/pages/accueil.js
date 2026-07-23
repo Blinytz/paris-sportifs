@@ -6,13 +6,13 @@
 
 import {
   brouillonsSurMatchs, dernieresCotes, listeLigues, lireReglages,
-  matchsDuJour, mesParisSurMatchs,
+  majMiseParDefaut, matchsDuJour, mesParisSurMatchs,
 } from '../api.js';
 import { embleme, nomLigue, trierLigues } from '../ordre-ligues.js';
 import { brancherCases, casesScore } from '../saisie.js';
 import {
   blason, cleJour, echapper, eclats, erreur, gainPari, heure, libelleBonus,
-  nombre, squelettes, vide,
+  nombre, squelettes, toast, vide,
 } from '../ui.js';
 
 const JOURS_AVANT = 3;
@@ -95,17 +95,45 @@ async function rendre(conteneur) {
 
   const liste = matchs.length
     ? matchs.map((m) => carteMatch(
-        m, cotes.get(m.id), paris.get(m.id) || [], brouillons.get(m.id))).join('')
+        m, cotes.get(m.id), paris.get(m.id) || [], brouillons.get(m.id), mise)).join('')
     : vide('📅', 'Aucun match ce jour',
         'Change de date ou de compétition avec les filtres ci-dessus.');
 
   conteneur.innerHTML = `
     ${bandeauDates()}
     ${bandeauFiltres()}
+    ${bandeauMises(mise)}
     <div id="jour-courant">${liste}</div>`;
   brancherBandeaux(conteneur);
+  brancherMises(conteneur);
   brancherSaisies(conteneur, mise);
   brancherGlissement(conteneur);
+}
+
+// Puces de mise par défaut : un raccourci pour changer rapidement le
+// montant des paris rapides sans passer par les réglages.
+const MISES = [10, 25, 50, 100, 250, 500, 1000];
+
+function bandeauMises(mise) {
+  return `<div class="mises-rapides">
+    <span class="etiquette">Mise</span>
+    ${MISES.map((v) => `<button class="puce-mise ${v === mise ? 'actif' : ''}"
+      data-mise="${v}">${nombre(v)}</button>`).join('')}
+  </div>`;
+}
+
+function brancherMises(conteneur) {
+  conteneur.querySelectorAll('.puce-mise').forEach((b) => {
+    b.addEventListener('click', async () => {
+      const v = Number(b.dataset.mise);
+      try {
+        await majMiseParDefaut(v);
+        rendre(conteneur);   // les pronos déjà enregistrés gardent leur mise
+      } catch (e) {
+        toast(e.message, 'echec');
+      }
+    });
+  });
 }
 
 // Glissement horizontal pour changer de jour : la page suit le doigt,
@@ -182,7 +210,7 @@ function issueDe(h, a) {
   return h < a ? 'away' : 'draw';
 }
 
-function carteMatch(m, cote, parisDuMatch, brouillon) {
+function carteMatch(m, cote, parisDuMatch, brouillon, mise) {
   const ouvert = m.status === 'scheduled' && new Date(m.kickoff_at) > new Date();
   const termine = m.status === 'finished' && m.score_home !== null;
   const enCours = m.status === 'live';
@@ -209,7 +237,7 @@ function carteMatch(m, cote, parisDuMatch, brouillon) {
   else if (brouillon) etatCases = 'enregistre';
 
   const centre = ouvert
-    ? casesScore(m, brouillon)
+    ? casesScore(m, brouillon, { mise })
     : `<div class="cases-score">
          <div class="score-fige ${etatCases}">${termine || enCours ? m.score_home ?? '?' : '?'}</div>
          <span class="deux-points">:</span>

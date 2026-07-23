@@ -2,10 +2,10 @@
 // Les graphiques sont dessinés en SVG à la main (aucune bibliothèque, la
 // PWA doit rester autonome hors ligne).
 
-import { mesParis, mouvementsLedger } from '../api.js';
+import { mesParis } from '../api.js';
 import { embleme, nomLigue } from '../ordre-ligues.js';
 import {
-  bilan, courbeSolde, filtrerPeriode, parBonus, parCompetition, parEquipe,
+  bilan, courbeResultat, filtrerPeriode, parBonus, parCompetition, parEquipe,
   parIssue, parJour, parSport, qualitePronostic, series,
 } from '../stats-calculs.js';
 import { echapper, eclats, erreur, nombre, squelettes, vide } from '../ui.js';
@@ -20,16 +20,13 @@ let periodeActive = 0;   // 0 = tout
 export async function pageStats(conteneur) {
   conteneur.innerHTML = squelettes(4);
   try {
-    const [paris, mouvements] = await Promise.all([
-      mesParis(), mouvementsLedger(),
-    ]);
-    rendre(conteneur, paris, mouvements);
+    rendre(conteneur, await mesParis());
   } catch (e) {
     conteneur.innerHTML = erreur(e);
   }
 }
 
-function rendre(conteneur, tousLesParis, mouvements) {
+function rendre(conteneur, tousLesParis) {
   const paris = filtrerPeriode(tousLesParis, periodeActive);
   const b = bilan(paris);
 
@@ -47,7 +44,7 @@ function rendre(conteneur, tousLesParis, mouvements) {
   const equipes = parEquipe(paris);
   const qualite = qualitePronostic(paris);
   const sports = parSport(paris);
-  const courbe = courbeSolde(mouvements);
+  const courbe = courbeResultat(paris);
 
   const netJours = jours.map((j) => j.net);
   const moyenneJour = netJours.length
@@ -146,7 +143,7 @@ function blocGraphiques(jours, courbe, moyenne, meilleur, pire) {
       </div>
     </div>
     ${courbe.length > 1 ? `<div class="carte">
-      <p class="faible">Évolution du solde</p>${ligne(courbe)}</div>` : ''}`;
+      <p class="faible">Résultat cumulé sur les paris</p>${ligne(courbe)}</div>` : ''}`;
 }
 
 // Diagramme en barres : net par jour, au-dessus et en dessous de zéro
@@ -173,29 +170,32 @@ function barres(jours) {
     </div>`;
 }
 
-// Courbe du solde
+// Courbe du résultat cumulé (peut passer sous zéro)
 function ligne(courbe) {
   const points = courbe.slice(-120);
-  const valeurs = points.map((p) => p.solde);
+  const valeurs = points.map((p) => p.resultat);
   const min = Math.min(...valeurs, 0);
-  const max = Math.max(...valeurs, 1);
+  const max = Math.max(...valeurs, 0);
   const etendue = max - min || 1;
+  const yDe = (v) => 55 - ((v - min) / etendue) * 50;
   const chemin = points.map((p, i) => {
     const x = (i / Math.max(points.length - 1, 1)) * 100;
-    const y = 55 - ((p.solde - min) / etendue) * 50;
-    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${yDe(p.resultat).toFixed(1)}`;
   }).join(' ');
+  const yZero = yDe(0).toFixed(1);
   const dernier = valeurs.at(-1);
+  const couleur = dernier >= 0 ? 'var(--vert)' : 'var(--rouge)';
   return `
     <svg class="graphe" viewBox="0 0 100 60" preserveAspectRatio="none"
-         role="img" aria-label="Évolution du solde">
-      <path d="${chemin} L100,60 L0,60 Z" fill="rgba(201,162,39,.12)"/>
-      <path d="${chemin}" fill="none" stroke="var(--or)" stroke-width="1.4"
+         role="img" aria-label="Résultat cumulé sur les paris">
+      <line x1="0" y1="${yZero}" x2="100" y2="${yZero}"
+            stroke="var(--bordure)" stroke-width=".4"/>
+      <path d="${chemin}" fill="none" stroke="${couleur}" stroke-width="1.4"
             stroke-linejoin="round" stroke-linecap="round"/>
     </svg>
     <div class="axe-graphe">
-      <span>${eclats(valeurs[0])} ✦</span>
-      <span>${eclats(dernier)} ✦ aujourd'hui</span>
+      <span>départ</span>
+      <span>${signe(dernier)} ✦ à ce jour</span>
     </div>`;
 }
 

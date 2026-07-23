@@ -217,12 +217,16 @@ export function parSport(paris) {
   return res;
 }
 
-// Courbe du solde dans le temps, à partir des mouvements du portefeuille
-export function courbeSolde(mouvements) {
+// Résultat cumulé PROPRE AUX PARIS, calculé depuis les paris joués (jamais
+// depuis le solde du portefeuille, qui est partagé avec les autres apps).
+// Net par pari : gagné -> gain - mise ; perdu -> -mise ; remboursé -> 0.
+export function courbeResultat(paris) {
+  const joues = paris.filter(estJoue)
+    .sort((a, b) => new Date(a.resolved_at) - new Date(b.resolved_at));
   let cumul = 0;
-  return mouvements.map((m) => {
-    cumul += Number(m.amount);
-    return { date: m.created_at, solde: cumul };
+  return joues.map((p) => {
+    cumul += (p.status === 'won' ? gainPari(p) : 0) - Number(p.stake_eclats);
+    return { date: p.resolved_at, resultat: cumul };
   });
 }
 

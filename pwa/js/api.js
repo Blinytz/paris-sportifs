@@ -283,3 +283,30 @@ export function sauverReglages(valeurs) {
   return patch('model_settings', { id: 'eq.default' },
     { ...valeurs, updated_at: new Date().toISOString() });
 }
+
+// Change uniquement la mise par défaut des paris rapides
+export function majMiseParDefaut(valeur) {
+  return sauverReglages({ default_stake: valeur });
+}
+
+// ---------- Paliers et profil ----------
+
+export function listePaliers() {
+  return rest('paliers', { order: 'idx.asc' });
+}
+
+// Points de pronostiqueur (calcul serveur, source de vérité)
+export function pointsPronostiqueur() {
+  return rpc('pronostiqueur_points');
+}
+
+// Indices des paliers dont la prime a déjà été réclamée
+export async function primesReclamees() {
+  const rows = await rest('palier_claims', { select: 'palier_idx' });
+  return new Set(rows.map((r) => r.palier_idx));
+}
+
+// Réclame les primes des paliers atteints ; retourne le total crédité
+export function reclamerPrimesPaliers() {
+  return rpc('claim_palier_rewards');
+}
