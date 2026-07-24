@@ -245,9 +245,11 @@ function carteMatch(m, cote, parisDuMatch, brouillon, mise) {
   // Mise engagée, sous le score : repère immédiatement les mises qui ne
   // sont pas au montant habituel
   const miseAffichee = pronostic
-    ? `<div class="mise-mini ${pari ? 'ferme' : ''}">${eclats(
+    ? `<div class="mise-mini ${pari ? 'ferme' : ''}">Mise ${eclats(
         pari ? pari.stake_eclats : pronostic.stake_eclats)} ✦</div>`
     : '';
+  const libelleScore = ouvert ? 'Mon pronostic'
+    : termine ? 'Score final' : 'Score du match';
 
   return `
     <div class="carte carte-match" data-match="${m.id}">
@@ -261,7 +263,10 @@ function carteMatch(m, cote, parisDuMatch, brouillon, mise) {
         <a class="equipe" href="#/equipe/${m.home_team_id}">
           ${blason(m.home)}<span class="nom">${echapper(m.home?.name)}</span>
         </a>
-        <div class="bloc-score">${centre}${cotesMini}${miseAffichee}</div>
+        <div class="bloc-score">
+          <div class="score-libelle">${libelleScore}</div>
+          ${centre}${cotesMini}${miseAffichee}
+        </div>
         <a class="equipe" href="#/equipe/${m.away_team_id}">
           ${blason(m.away)}<span class="nom">${echapper(m.away?.name)}</span>
         </a>
@@ -286,7 +291,7 @@ function piedCarte(m, pari, brouillon, parisDuMatch, termine, ouvert) {
     return `
       <div class="match-pied">
         <span class="etat-saisie faible">${brouillon
-          ? `Enregistré : ${brouillon.predicted_home} - ${brouillon.predicted_away}`
+          ? `Mon pronostic : ${brouillon.predicted_home} - ${brouillon.predicted_away} · enregistré`
           : 'Saisis ton pronostic'}</span>
         <a class="lien-classement" href="#/match/${m.id}">Détails et mise →</a>
       </div>`;
@@ -294,9 +299,12 @@ function piedCarte(m, pari, brouillon, parisDuMatch, termine, ouvert) {
   if (!pari) {
     return `
       <div class="match-pied">
-        <span class="faible">${brouillon
-          ? `Pronostic ${brouillon.predicted_home} - ${brouillon.predicted_away} en cours de validation`
-          : 'Pas de pronostic'}</span>
+        ${brouillon ? `<div>
+          <div class="libelle">Mon pronostic</div>
+          <div class="valeur">${brouillon.predicted_home} - ${brouillon.predicted_away}</div>
+        </div>
+        <span class="gain-pastille en-jeu">validation en attente</span>`
+          : '<span class="faible">Aucun pronostic</span>'}
         <a class="lien-classement" href="#/match/${m.id}">Détails →</a>
       </div>`;
   }
@@ -319,7 +327,7 @@ function piedCarte(m, pari, brouillon, parisDuMatch, termine, ouvert) {
   return `
     <div class="match-pied">
       <div>
-        <div class="libelle">Pari validé${autres}</div>
+        <div class="libelle">Mon pronostic · pari validé${autres}</div>
         <div class="valeur">${pari.predicted_home} - ${pari.predicted_away}
           ${termine && pari.status === 'won'
             ? `<span class="faible">· ${echapper(libelleBonus(pari, m.score_home, m.score_away))}</span>`

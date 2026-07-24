@@ -87,6 +87,17 @@ Précisions :
   en cours » et ne présente plus le score comme modifiable.
 - Convention visuelle : gris pour vide ou annulé, or pour enregistré,
   bleu pour verrouillé/en jeu, vert pour gagné et rouge pour perdu.
+- Sur les cartes terminées, le résultat porte toujours le libellé
+  **Score final** et la saisie personnelle le libellé **Mon pronostic**.
+
+### Correctif des validations bloquées du 24/07/2026
+
+Le rôle `service_role` avait perdu le droit d'exécuter
+`validate_due_drafts()`. Les tâches GitHub recevaient HTTP 403, mais le
+script masquait l'erreur et terminait en succès. Le code accorde désormais
+explicitement ce droit et laisse l'exécution échouer si la validation
+échoue. Pour une base déjà installée, exécuter une fois
+`sql/correctif_validation_brouillons.sql`, puis relancer `sync-resultats`.
 
 ## Quota API : sync par date (refonte du 21/07/2026)
 

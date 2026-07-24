@@ -207,6 +207,9 @@ def valider_brouillons(db):
             log.info("%s brouillon(s) validé(s) en pari ferme", valides)
     except Exception:
         log.exception("Échec de la validation des brouillons")
+        # Une validation cassée ne doit jamais produire une exécution verte :
+        # sinon les brouillons s'accumulent silencieusement après les matchs.
+        raise
 
 
 def main():

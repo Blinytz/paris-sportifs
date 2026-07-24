@@ -247,6 +247,7 @@ end
 $$;
 
 revoke all on function validate_due_drafts() from public, anon, authenticated;
+grant execute on function validate_due_drafts() to service_role;
 
 -- ============================================================
 -- Compétitions ajoutées le 23/07/2026

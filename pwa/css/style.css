@@ -197,6 +197,20 @@ a.carte:active { transform: scale(.995); }
 
 /* Bloc central : cases de score */
 .bloc-score { display: flex; flex-direction: column; align-items: center; gap: .3rem; }
+.score-libelle {
+  color: var(--texte-faible); font-size: .66rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.pronostic-rappel {
+  padding: .12rem .42rem; border-radius: 6px;
+  background: #fdf6e0; color: var(--or-fonce); font-size: .7rem;
+}
+.pronostic-grand {
+  margin: .1rem 0; color: var(--or-fonce); font-size: 1.45rem; font-weight: 800;
+}
+.pronostic-attente {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
 .cases-score { display: flex; align-items: center; gap: .3rem; }
 .case-score {
   width: 3rem; height: 3rem; border-radius: 12px;
@@ -267,7 +281,7 @@ a.carte:active { transform: scale(.995); }
 /* Pied de carte : pronostic et gain */
 .match-pied {
   display: flex; align-items: center; justify-content: space-between;
-  gap: .5rem; margin-top: .7rem; padding-top: .6rem;
+  flex-wrap: wrap; gap: .5rem; margin-top: .7rem; padding-top: .6rem;
   border-top: 1px solid var(--bordure);
   font-size: .78rem; color: var(--texte-doux);
 }

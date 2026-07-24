@@ -49,6 +49,8 @@ function rendre(conteneur, match, cotes, paris, reglages, brouillon) {
   const enCours = etatMatch === 'en-cours' || etatMatch === 'verrouille';
   const ouvert = matchOuvert(match);
   const classeCases = classeCasesPronostic(match, paris[0], brouillon);
+  const libelleScore = termine ? 'Score final'
+    : enCours ? 'Score du match' : 'Score à venir';
   const estChampionnat = match.league?.category === 'championnat';
 
   conteneur.innerHTML = `
@@ -63,6 +65,7 @@ function rendre(conteneur, match, cotes, paris, reglages, brouillon) {
           ${blason(match.home)}<span class="nom">${echapper(match.home?.name)}</span>
         </a>
         <div class="bloc-score">
+          <div class="score-libelle">${libelleScore}</div>
           <div class="cases-score">
             <div class="score-fige ${classeCases}">${termine || enCours ? match.score_home ?? '?' : '?'}</div>
             <span class="deux-points">:</span>
@@ -84,6 +87,7 @@ function rendre(conteneur, match, cotes, paris, reglages, brouillon) {
     ${paris.length ? blocMesParis(match, paris) : ''}
 
     ${ouvert ? blocPronostic(match, cotes, reglages, brouillon) : ''}
+    ${!ouvert && brouillon ? blocBrouillonEnAttente(brouillon) : ''}
 
     <div class="onglets-internes">
       <button data-onglet="avant" class="${ongletActif === 'avant' ? 'actif' : ''}">
@@ -118,12 +122,24 @@ function libelleStatutMatch(match) {
   return echapper(dateHeure(match.kickoff_at));
 }
 
+function blocBrouillonEnAttente(brouillon) {
+  return `
+    <div class="carte pronostic-attente">
+      <div>
+        <div class="libelle">Mon pronostic enregistré</div>
+        <div class="pronostic-grand">${brouillon.predicted_home} - ${brouillon.predicted_away}</div>
+        <div class="faible">Mise prévue ${eclats(brouillon.stake_eclats)} ✦</div>
+      </div>
+      <span class="gain-pastille en-jeu">validation en attente</span>
+    </div>`;
+}
+
 // ---------- Mes paris sur ce match ----------
 
 function blocMesParis(match, paris) {
   return `
     <div class="carte">
-      <h2 style="margin-top:0">Mes pronostics</h2>
+      <h2 style="margin-top:0">Mon pronostic</h2>
       ${paris.map((p) => {
         const recoltable = (p.status === 'won' || p.status === 'void') && !p.collected_at;
         const montant = p.status === 'won' ? gainPari(p) : Number(p.stake_eclats);
@@ -133,7 +149,7 @@ function blocMesParis(match, paris) {
           <div>
             <div class="libelle">${eclats(p.stake_eclats)} ✦ à
               ${echapper(Number(p.odds_at_bet).toFixed(2))}</div>
-            <div class="valeur">${p.predicted_home} - ${p.predicted_away}
+            <div class="valeur">Score pronostiqué : ${p.predicted_home} - ${p.predicted_away}
               ${p.status === 'won'
                 ? `<span class="faible">· ${echapper(libelleBonus(p, match.score_home, match.score_away))}</span>` : ''}</div>
           </div>

@@ -13,9 +13,13 @@ const schema = read("sql/schema.sql");
 const install = read("sql/install_complet.sql");
 const migration = read("sql/securite_administration.sql");
 const paliers = read("sql/paliers_reglables.sql");
+const brouillons = read("sql/brouillons.sql");
+const correctifValidation = read("sql/correctif_validation_brouillons.sql");
 const reglages = read("pwa/js/pages/reglages.js");
 const accueil = read("pwa/js/pages/accueil.js");
 const mesParis = read("pwa/js/pages/mes-paris.js");
+const match = read("pwa/js/pages/match.js");
+const settlement = read("scripts/settle_bets.py");
 const {
   classeCasesPronostic, classeGainPari, etatTemporelMatch, matchOuvert,
 } = await import("../pwa/js/etat-prono.js");
@@ -38,6 +42,13 @@ test("le barème de points n'est plus figé dans la fonction",
 test("la page Réglages édite seuils et primes",
   reglages.includes("listePaliers") && reglages.includes("sauverPalier") &&
   reglages.includes("strictement croissants"));
+test("le rôle serveur peut exécuter la validation des brouillons",
+  brouillons.includes("grant execute on function validate_due_drafts() to service_role") &&
+  correctifValidation.includes(
+    "grant execute on function public.validate_due_drafts() to service_role"));
+test("une erreur de validation fait échouer le règlement",
+  settlement.includes('log.exception("Échec de la validation des brouillons")') &&
+  settlement.includes("        raise"));
 
 const maintenant = Date.parse("2026-07-24T18:00:00Z");
 const futur = { status: "scheduled", kickoff_at: "2026-07-24T19:00:00Z" };
@@ -68,6 +79,11 @@ test("Mes paris sépare les brouillons verrouillés des modifiables",
   mesParis.includes("const modifiables =") &&
   mesParis.includes("const enAttenteValidation =") &&
   mesParis.includes("matchOuvert(d.match)"));
+test("le score réel et le pronostic sont libellés sans ambiguïté",
+  accueil.includes("'Score final'") &&
+  accueil.includes("Mon pronostic · pari validé") &&
+  mesParis.includes("Mon pronostic <strong>") &&
+  match.includes("Mon pronostic enregistré"));
 
 const jsDirs = ["pwa/js", "pwa/js/pages"];
 for (const dir of jsDirs) {

@@ -150,6 +150,7 @@ function carteBrouillon(d) {
           <div class="equipe">${blason(m?.home)}
             <span class="nom">${echapper(m?.home?.name)}</span></div>
           <div class="bloc-score">
+            <div class="score-libelle">Mon pronostic</div>
             <div class="cases-score">
               <div class="score-fige annule">${d.predicted_home}</div>
               <span class="deux-points">:</span>
@@ -178,6 +179,7 @@ function carteBrouillon(d) {
         <div class="equipe">${blason(m?.home)}
           <span class="nom">${echapper(m?.home?.name)}</span></div>
         <div class="bloc-score">
+          <div class="score-libelle">Mon pronostic</div>
           <div class="cases-score">
             <div class="score-fige ${classeCases}">${d.predicted_home}</div>
             <span class="deux-points">:</span>
@@ -216,12 +218,13 @@ function cartePari(p, recoltable = false) {
           ${blason(m?.home)}<span class="nom">${echapper(m?.home?.name)}</span>
         </a>
         <div class="bloc-score">
+          <div class="score-libelle">${termine ? 'Score final' : 'Score du match'}</div>
           <div class="cases-score">
             <div class="score-fige ${classeCases}">${termine || enDirect ? m.score_home ?? '?' : '?'}</div>
             <span class="deux-points">:</span>
             <div class="score-fige ${classeCases}">${termine || enDirect ? m.score_away ?? '?' : '?'}</div>
           </div>
-          <div class="faible">pronostic ${p.predicted_home} - ${p.predicted_away}</div>
+          <div class="pronostic-rappel">Mon pronostic <strong>${p.predicted_home} - ${p.predicted_away}</strong></div>
         </div>
         <a class="equipe" href="#/equipe/${m?.away_team_id}">
           ${blason(m?.away)}<span class="nom">${echapper(m?.away?.name)}</span>
