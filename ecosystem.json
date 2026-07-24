@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "appId": "paris-sportifs",
+  "displayName": "Paris Sportifs",
+  "description": "Pronostics sportifs personnels utilisant des Éclats.",
+  "lifecycle": "construction",
+  "ownership": { "audience": "single-user", "repositoryVisibility": "private", "repository": "Blinytz/paris-sportifs" },
+  "data": { "storage": ["fixtures", "supabase"], "exportAvailable": false, "productionMutationAllowed": false },
+  "eclats": { "mode": "local", "ledger": "candidate", "balanceMigration": "forbidden" },
+  "commands": { "install": null, "dev": "python -m http.server 4321 --directory pwa", "test": "node tests/run.mjs", "build": "node scripts/build_apercu.mjs", "lint": null },
+  "integration": { "contractVersion": 1, "status": "manifest-only", "adapter": null }
+}
