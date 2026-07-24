@@ -4,7 +4,7 @@
     {
       "name": "pwa",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8734", "--directory", "C:/Users/flxjr/OneDrive/Bureau/paris-sportifs/pwa"],
+      "runtimeArgs": ["-m", "http.server", "8734", "--directory", "C:/Users/flxjr/OneDrive/Documents/Ecosystème Eclats/apps/pronos/pwa"],
       "port": 8734
     }
   ]

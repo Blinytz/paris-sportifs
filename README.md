@@ -1,4 +1,4 @@
-# Paris Sportifs — Éclats ✦
+# Pronos
 
 Paris sportifs fictifs en Éclats sur 32 compétitions de foot et 7 de rugby,
 avec cotes maison calculées par un modèle Elo. Aucune cote externe, aucun
