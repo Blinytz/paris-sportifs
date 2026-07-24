@@ -724,6 +724,9 @@ $$;
 revoke all on function validate_due_drafts() from public, anon, authenticated;
 grant execute on function validate_due_drafts() to service_role;
 
+-- Finaliser l'installation avec reservation_immediate.sql pour activer
+-- la réservation immédiate et atomique des mises.
+
 -- ============================================================
 -- Compétitions ajoutées le 23/07/2026
 --

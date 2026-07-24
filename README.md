@@ -79,12 +79,15 @@ Précisions :
 ## Cycle de vie d'un pronostic
 
 - Dès que les deux scores sont saisis, le pronostic est enregistré comme
-  brouillon et reste modifiable jusqu'à l'heure du coup d'envoi.
+  brouillon, sa mise est retirée du solde et réservée. Si la mise demandée
+  dépasse le solde disponible, elle est automatiquement ramenée à ce solde.
+- Modifier une mise ne débite ou ne rend que la différence. Effacer le
+  pronostic avant le coup d'envoi le supprime et rembourse toute la mise.
 - L'heure du coup d'envoi verrouille toujours la saisie, même si le statut
   fourni par l'API sportive est encore provisoirement `scheduled`.
-- Au passage serveur suivant, le brouillon verrouillé devient un pari et
-  la mise est débitée. Pendant ce délai, l'interface affiche « validation
-  en cours » et ne présente plus le score comme modifiable.
+- Au passage serveur suivant, le brouillon verrouillé devient un pari sans
+  second débit. Pendant ce délai, l'interface affiche « validation en
+  cours » et ne présente plus le score comme modifiable.
 - Convention visuelle : gris pour vide ou annulé, or pour enregistré,
   bleu pour verrouillé/en jeu, vert pour gagné et rouge pour perdu.
 - Sur les cartes terminées, le résultat porte toujours le libellé
@@ -96,8 +99,9 @@ Le rôle `service_role` avait perdu le droit d'exécuter
 `validate_due_drafts()`. Les tâches GitHub recevaient HTTP 403, mais le
 script masquait l'erreur et terminait en succès. Le code accorde désormais
 explicitement ce droit et laisse l'exécution échouer si la validation
-échoue. Pour une base déjà installée, exécuter une fois
-`sql/correctif_validation_brouillons.sql`, puis relancer `sync-resultats`.
+échoue. La migration `sql/reservation_immediate.sql` inclut ce droit et le
+nouveau système de réservation ; elle remplace le correctif minimal sur une
+base déjà installée. Après son exécution, relancer `sync-resultats`.
 
 ## Quota API : sync par date (refonte du 21/07/2026)
 

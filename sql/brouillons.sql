@@ -164,3 +164,6 @@ $$;
 
 revoke all on function validate_due_drafts() from public, anon, authenticated;
 grant execute on function validate_due_drafts() to service_role;
+
+-- Pour activer le débit immédiat, le plafonnement au solde et le
+-- remboursement à l'effacement, exécuter ensuite reservation_immediate.sql.

@@ -2,10 +2,12 @@
 //
 // Deux notions distinctes (comme sur MPP) :
 //   - ENREGISTRER : dès que les deux cases sont remplies, le pronostic
-//     est sauvegardé en brouillon. Modifiable de partout, tant que le
-//     match n'a pas commencé.
-//   - VALIDER : au coup d'envoi, le serveur transforme le brouillon en
-//     pari ferme et débite la mise (fonction validate_due_drafts).
+//     est sauvegardé et sa mise est réservée immédiatement. Elle est
+//     plafonnée au solde disponible.
+//   - EFFACER : vider les deux cases supprime le pronostic et rembourse
+//     intégralement sa réservation.
+//   - VALIDER : au coup d'envoi, le serveur transforme la réservation en
+//     pari ferme sans débiter une seconde fois.
 //
 // Confort de frappe : au football un score tient sur un chiffre dans la
 // quasi-totalité des cas, le curseur saute donc à la seconde case après
@@ -13,7 +15,7 @@
 // d'y saisir un second chiffre.
 
 import { enregistrerBrouillon, supprimerBrouillon } from './api.js';
-import { echapper, toast } from './ui.js';
+import { echapper, eclats, toast } from './ui.js';
 
 const DELAI_ENREGISTREMENT = 700;
 
@@ -73,8 +75,16 @@ export function brancherCases(racine, { mise, surEtat, surChangement } = {}) {
     const [h, a] = lire();
     try {
       if (h === '' && a === '') {
-        await supprimerBrouillon(bloc.dataset.match);
-        dire('Pronostic effacé');
+        const suppression = await supprimerBrouillon(bloc.dataset.match);
+        const remboursement = Number(suppression?.refunded) || 0;
+        bloc.dataset.mise = mise || 100;
+        dire(remboursement
+          ? `Pronostic effacé · ${eclats(remboursement)} ✦ rendus`
+          : 'Pronostic effacé', 'ok');
+        window.dispatchEvent(new Event('eclats-changes'));
+        if (surChangement) {
+          surChangement(null, null, { deleted: true, refunded: remboursement });
+        }
       } else if (h === '' || a === '') {
         dire('Complète les deux cases');
         return;
@@ -82,9 +92,17 @@ export function brancherCases(racine, { mise, surEtat, surChangement } = {}) {
         // Mise lue à chaud sur le bloc : préserve la mise du brouillon
         // existant, ou reflète un changement fait entre-temps.
         const stake = Number(bloc.dataset.mise) || mise || 100;
-        await enregistrerBrouillon(bloc.dataset.match, Number(h), Number(a), stake);
-        dire('Enregistré ✓', 'ok');
-        if (surChangement) surChangement(Number(h), Number(a));
+        const resultat = await enregistrerBrouillon(
+          bloc.dataset.match, Number(h), Number(a), stake);
+        const reservee = Number(resultat?.stake_eclats) || stake;
+        bloc.dataset.mise = reservee;
+        dire(resultat?.adjusted
+          ? `Enregistré à ${eclats(reservee)} ✦ · solde disponible atteint`
+          : `Enregistré · ${eclats(reservee)} ✦ réservés`, 'ok');
+        window.dispatchEvent(new Event('eclats-changes'));
+        if (surChangement) {
+          surChangement(Number(h), Number(a), resultat || { stake_eclats: reservee });
+        }
       }
     } catch (e) {
       dire(`Non enregistré : ${e.message}`, 'erreur');

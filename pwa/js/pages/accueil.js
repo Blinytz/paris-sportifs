@@ -348,6 +348,21 @@ function brancherSaisies(conteneur, mise) {
           etatSaisie.className = `etat-saisie ${classe === 'ok' ? 'ok' : classe}`;
         }
       },
+      surChangement: (_home, _away, resultat) => {
+        let miseMini = carte.querySelector('.mise-mini');
+        if (resultat?.deleted) {
+          if (miseMini) miseMini.remove();
+          return;
+        }
+        const reservee = Number(resultat?.stake_eclats);
+        if (!reservee) return;
+        if (!miseMini) {
+          miseMini = document.createElement('div');
+          miseMini.className = 'mise-mini';
+          carte.querySelector('.bloc-score')?.append(miseMini);
+        }
+        miseMini.textContent = `Mise ${eclats(reservee)} ✦`;
+      },
     });
   }
 }

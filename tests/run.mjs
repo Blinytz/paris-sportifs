@@ -15,10 +15,13 @@ const migration = read("sql/securite_administration.sql");
 const paliers = read("sql/paliers_reglables.sql");
 const brouillons = read("sql/brouillons.sql");
 const correctifValidation = read("sql/correctif_validation_brouillons.sql");
+const reservationImmediate = read("sql/reservation_immediate.sql");
 const reglages = read("pwa/js/pages/reglages.js");
+const api = read("pwa/js/api.js");
 const accueil = read("pwa/js/pages/accueil.js");
 const mesParis = read("pwa/js/pages/mes-paris.js");
 const match = read("pwa/js/pages/match.js");
+const saisie = read("pwa/js/saisie.js");
 const settlement = read("scripts/settle_bets.py");
 const {
   classeCasesPronostic, classeGainPari, etatTemporelMatch, matchOuvert,
@@ -49,6 +52,39 @@ test("le rôle serveur peut exécuter la validation des brouillons",
 test("une erreur de validation fait échouer le règlement",
   settlement.includes('log.exception("Échec de la validation des brouillons")') &&
   settlement.includes("        raise"));
+test("les écritures directes de brouillons sont remplacées par des RPC",
+  reservationImmediate.includes(
+    "revoke insert, update, delete on bet_drafts from authenticated") &&
+  reservationImmediate.includes("create or replace function save_bet_draft(") &&
+  reservationImmediate.includes("create or replace function delete_bet_draft(") &&
+  api.includes("rpc('save_bet_draft'") &&
+  api.includes("rpc('delete_bet_draft'"));
+test("la mise est plafonnée au solde et la suppression rembourse",
+  reservationImmediate.includes(
+    "v_reserved := least(p_requested_stake, v_available_pool)") &&
+  reservationImmediate.includes("'paris_sportifs_annulation'") &&
+  reservationImmediate.includes("'refunded', v_refund"));
+test("la validation ne débite pas une réservation une seconde fois",
+  reservationImmediate.includes("-- Aucun débit ici : la mise est déjà réservée.") &&
+  reservationImmediate.includes("if not v_draft.stake_reserved then"));
+test("l'interface actualise le solde après réservation ou remboursement",
+  saisie.includes("new Event('eclats-changes')") &&
+  saisie.includes("solde disponible atteint") &&
+  !mesParis.includes("Il te manque"));
+
+function reservationModele(demandee, solde, ancienne = 0, dejaReservee = false) {
+  const disponible = Math.max(solde, 0) + (dejaReservee ? ancienne : 0);
+  const reservee = Math.min(demandee, disponible);
+  const delta = dejaReservee ? ancienne - reservee : -reservee;
+  return { reservee, delta, soldeApres: solde + delta };
+}
+test("100 demandés avec 50 disponibles réserve exactement 50",
+  JSON.stringify(reservationModele(100, 50)) ===
+    JSON.stringify({ reservee: 50, delta: -50, soldeApres: 0 }));
+test("réduire ou augmenter une réservation ne porte que sur la différence",
+  reservationModele(30, 0, 50, true).delta === 20 &&
+  reservationModele(100, 20, 30, true).reservee === 50 &&
+  reservationModele(100, 20, 30, true).delta === -20);
 
 const maintenant = Date.parse("2026-07-24T18:00:00Z");
 const futur = { status: "scheduled", kickoff_at: "2026-07-24T19:00:00Z" };

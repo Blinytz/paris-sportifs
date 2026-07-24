@@ -64,14 +64,13 @@ function rendre(conteneur, paris, brouillons = [], solde = 0) {
   const modifiables = brouillonsActifs.filter((d) => matchOuvert(d.match));
   const enAttenteValidation = brouillonsActifs.filter((d) => !matchOuvert(d.match));
   const rejetes = brouillons.filter((d) => d.rejected_at);
-  const engage = brouillonsActifs.reduce(
+  const reserve = brouillonsActifs.reduce(
     (s, d) => s + Number(d.stake_eclats), 0);
-  const manque = engage - solde;
 
   conteneur.innerHTML = `
     <h1>Mes paris</h1>
     ${brouillonsActifs.length
-      ? bandeauEngagement(engage, solde, manque, aCollecter.length > 0) : ''}
+      ? bandeauReservations(reserve, solde) : ''}
     ${aCollecter.length ? `
       <div class="bandeau-collecte" id="bandeau-collecte">
         <div class="details">
@@ -93,7 +92,7 @@ function rendre(conteneur, paris, brouillons = [], solde = 0) {
 
     ${rejetes.length ? `<h2>Non validés (${rejetes.length})</h2>
       <p class="faible">Ces pronostics n'ont pas pu devenir des paris au
-        coup d'envoi. Aucun Éclat n'a été engagé.</p>
+        coup d'envoi. Toute mise réservée a été rendue.</p>
       ${rejetes.map(carteBrouillon).join('')}` : ''}
 
     ${enAttenteValidation.length ? `<h2>Validation en cours (${enAttenteValidation.length})</h2>
@@ -110,26 +109,9 @@ function rendre(conteneur, paris, brouillons = [], solde = 0) {
   brancherCollecte(conteneur, aCollecter);
 }
 
-// Prévient AVANT le coup d'envoi si les mises engagées dépassent le
-// solde : sans cela, les paris seraient refusés un par un sans que
-// l'utilisateur puisse réagir.
-function bandeauEngagement(engage, solde, manque, aRecolter) {
-  if (manque <= 0) {
-    return `<p class="faible centre">${eclats(engage)} ✦ prévus sur tes
-      pronostics non encore débités, pour ${eclats(solde)} ✦ disponibles.</p>`;
-  }
-  return `
-    <div class="bandeau-alerte">
-      <div>
-        <strong>Il te manque ${eclats(manque)} ✦</strong>
-        <div class="sous">Tu as prévu ${eclats(engage)} ✦ sur tes pronostics
-          non encore débités mais ne possèdes que ${eclats(solde)} ✦.
-          À leur validation, les derniers seront refusés faute de solde.</div>
-        ${aRecolter ? `<div class="sous"><strong>Récolte tes gains en
-          attente ci-dessus</strong> : ils ne comptent dans ton solde
-          qu'une fois encaissés.</div>` : ''}
-      </div>
-    </div>`;
+function bandeauReservations(reserve, solde) {
+  return `<p class="faible centre"><strong>${eclats(reserve)} ✦ réservés</strong>
+    sur tes pronostics · ${eclats(solde)} ✦ encore disponibles.</p>`;
 }
 
 // Pronostic enregistré (ou rejeté au coup d'envoi)
@@ -190,7 +172,8 @@ function carteBrouillon(d) {
           <span class="nom">${echapper(m?.away?.name)}</span></div>
       </div>
       <div class="match-pied">
-        <span class="libelle">Mise prévue ${eclats(d.stake_eclats)} ✦</span>
+        <span class="libelle">${d.stake_reserved ? 'Mise réservée' : 'Mise à traiter'}
+          ${eclats(d.stake_eclats)} ✦</span>
         <span class="gain-pastille ${modifiable ? 'enregistre' : 'en-jeu'}">
           ${modifiable ? 'modifiable' : '🔒 verrouillé'}</span>
       </div>

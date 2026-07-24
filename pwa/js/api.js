@@ -1,7 +1,7 @@
 // Requêtes métier vers Supabase (lecture des données sportives, paris,
 // solde d'Éclats, réglages du modèle).
 
-import { effacer, patch, rest, rpc, upsert, utilisateur } from './supabase.js';
+import { patch, rest, rpc, utilisateur } from './supabase.js';
 
 // Embeds PostgREST réutilisés : les deux FK équipes de `matches` doivent
 // être désambiguïsées par le nom de contrainte.
@@ -27,10 +27,9 @@ export function matchsDuJour(dateLocale, { sport, leagueId } = {}) {
 }
 
 // ---------- Brouillons de pronostic ----------
-// Un score saisi est enregistré aussitôt, mais le pari n'est validé (et
-// la mise débitée) qu'au coup d'envoi, par la fonction serveur
-// validate_due_drafts. Tant que le match n'a pas commencé, le brouillon
-// reste modifiable depuis n'importe quelle page.
+// Un score saisi est enregistré aussitôt et sa mise est réservée dans le
+// ledger par une RPC atomique. Au coup d'envoi, validate_due_drafts
+// transforme la réservation en pari ferme sans second débit.
 
 export async function brouillonsSurMatchs(matchIds) {
   if (!matchIds.length) return new Map();
@@ -52,21 +51,20 @@ export function tousLesBrouillons() {
   });
 }
 
-// Enregistre (ou met à jour) le pronostic. La RLS refuse l'écriture dès
-// que le match a commencé : le score est alors figé.
+// Enregistre ou met à jour le pronostic, réserve immédiatement la mise et
+// la plafonne au solde disponible. Retour : mise réellement réservée,
+// indicateur d'ajustement et solde restant.
 export function enregistrerBrouillon(matchId, home, away, mise) {
-  return upsert('bet_drafts', {
-    user_id: utilisateur()?.id,
-    match_id: matchId,
-    predicted_home: home,
-    predicted_away: away,
-    stake_eclats: mise,
-    updated_at: new Date().toISOString(),
-  }, 'user_id,match_id');
+  return rpc('save_bet_draft', {
+    p_match_id: matchId,
+    p_home: home,
+    p_away: away,
+    p_requested_stake: mise,
+  });
 }
 
 export function supprimerBrouillon(matchId) {
-  return effacer('bet_drafts', { match_id: `eq.${matchId}` });
+  return rpc('delete_bet_draft', { p_match_id: matchId });
 }
 
 // Paris réglés en attente de collecte (gains et remboursements)

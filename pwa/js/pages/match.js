@@ -6,6 +6,7 @@ import {
   classementLigue, collecter, confrontations, dernieresCotes,
   enregistrerBrouillon, lireBrouillon, lireMatch, lireReglages, matchsEquipe,
   mesParisSurMatch, positionsDansLigue, statsCompetition, statsGlobales,
+  supprimerBrouillon,
 } from '../api.js';
 import {
   classeCasesPronostic, classeGainPari, etatTemporelMatch, matchOuvert,
@@ -128,7 +129,8 @@ function blocBrouillonEnAttente(brouillon) {
       <div>
         <div class="libelle">Mon pronostic enregistré</div>
         <div class="pronostic-grand">${brouillon.predicted_home} - ${brouillon.predicted_away}</div>
-        <div class="faible">Mise prévue ${eclats(brouillon.stake_eclats)} ✦</div>
+        <div class="faible">${brouillon.stake_reserved ? 'Mise réservée' : 'Mise à traiter'}
+          ${eclats(brouillon.stake_eclats)} ✦</div>
       </div>
       <span class="gain-pastille en-jeu">validation en attente</span>
     </div>`;
@@ -218,7 +220,8 @@ function blocPronostic(match, cotes, reglages, brouillon) {
       </div>
       <p class="faible" id="retour-pari"></p>
       <p class="faible">🔒 Modifiable jusqu'au coup d'envoi
-        (${echapper(debut)}), où la mise sera débitée et le pari validé.</p>
+        (${echapper(debut)}). La mise est réservée dès l'enregistrement.</p>
+      ${brouillon ? '<button class="btn-fantome" id="effacer-pronostic">Effacer mon pronostic</button>' : ''}
     </div>`;
 }
 
@@ -235,6 +238,16 @@ function brancherPronostic(conteneur, match, cotes, reglages, brouillon) {
     ? (Number(reglages?.bonus_score_exact_rugby) || 10)
     : (Number(reglages?.bonus_score_exact) || 2);
   const champs = [...conteneur.querySelectorAll('.cases-score .case-score')];
+  const blocCases = conteneur.querySelector('.cases-score');
+
+  const appliquerReservation = (resultat) => {
+    if (!resultat || resultat.deleted) return;
+    const reservee = Number(resultat.stake_eclats);
+    if (reservee > 0) {
+      miseChamp.value = reservee;
+      if (blocCases) blocCases.dataset.mise = reservee;
+    }
+  };
 
   const majApercu = () => {
     const [ph, pa] = champs.map((c) => c.value.trim());
@@ -263,17 +276,19 @@ function brancherPronostic(conteneur, match, cotes, reglages, brouillon) {
   brancherCases(conteneur, {
     mise: Number(miseChamp.value) || 100,
     surEtat: (texte, classe) => {
-      if (classe === 'ok') toast('Pronostic enregistré', 'succes');
+      if (classe === 'ok') toast(texte, 'succes');
       retour.textContent = texte;
     },
-    surChangement: majApercu,
+    surChangement: (_home, _away, resultat) => {
+      appliquerReservation(resultat);
+      majApercu();
+    },
   });
   champs.forEach((c) => c.addEventListener('input', majApercu));
 
   // Changer la mise réenregistre le brouillon existant, et met à jour la
   // mise portée par les cases pour qu'une modif de score ultérieure la
   // conserve (au lieu de retomber sur la mise par défaut).
-  const blocCases = conteneur.querySelector('.cases-score');
   let minuteurMise = null;
   miseChamp.addEventListener('input', () => {
     if (blocCases) blocCases.dataset.mise = Number(miseChamp.value) || 100;
@@ -283,14 +298,35 @@ function brancherPronostic(conteneur, match, cotes, reglages, brouillon) {
       const [ph, pa] = champs.map((c) => c.value.trim());
       if (ph === '' || pa === '') return;
       try {
-        await enregistrerBrouillon(match.id, Number(ph), Number(pa),
+        const resultat = await enregistrerBrouillon(match.id, Number(ph), Number(pa),
           Number(miseChamp.value) || 100);
-        retour.textContent = 'Mise enregistrée ✓';
+        appliquerReservation(resultat);
+        window.dispatchEvent(new Event('eclats-changes'));
+        retour.textContent = resultat?.adjusted
+          ? `Mise ramenée à ${eclats(resultat.stake_eclats)} ✦ selon le solde disponible`
+          : `Mise de ${eclats(resultat?.stake_eclats)} ✦ réservée ✓`;
+        majApercu();
       } catch (e) {
         toast(e.message, 'echec');
       }
     }, 700);
   });
+
+  const boutonEffacer = conteneur.querySelector('#effacer-pronostic');
+  if (boutonEffacer) {
+    boutonEffacer.addEventListener('click', async () => {
+      boutonEffacer.disabled = true;
+      try {
+        const resultat = await supprimerBrouillon(match.id);
+        window.dispatchEvent(new Event('eclats-changes'));
+        toast(`${eclats(resultat?.refunded || 0)} ✦ rendus`, 'succes');
+        await pageMatch(conteneur, match.id);
+      } catch (e) {
+        boutonEffacer.disabled = false;
+        toast(e.message, 'echec');
+      }
+    });
+  }
 
   if (brouillon) majApercu();
 }
