@@ -8,6 +8,27 @@
 -- en pari sans effectuer un second débit.
 -- ============================================================
 
+-- Répare le rejeu accidentel de l'ancienne migration refonte.sql :
+-- celle-ci marque tous les paris déjà réglés comme collectés en copiant
+-- resolved_at dans collected_at, même si aucun gain/remboursement n'a
+-- réellement été inscrit dans le registre. Les anciens règlements qui
+-- avaient bien été crédités restent intacts grâce au test sur le ledger.
+update bets b
+set collected_at = null
+where b.status in ('won', 'void')
+  and b.resolved_at is not null
+  and b.collected_at = b.resolved_at
+  and not exists (
+    select 1
+    from eclats_ledger l
+    where l.user_id = b.user_id
+      and l.reference_id = b.id
+      and l.source in (
+        'paris_sportifs_gain',
+        'paris_sportifs_remboursement'
+      )
+  );
+
 alter table bet_drafts
   add column if not exists stake_reserved boolean not null default false;
 
