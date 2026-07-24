@@ -3,11 +3,12 @@
 
 // Incrémenter à chaque déploiement qui modifie le shell : l'activation
 // purge l'ancien cache et évite de servir des modules JS périmés.
-const CACHE = 'pronos-v13';
+const CACHE = 'pronos-v14';
 const SHELL = [
   './', 'index.html', 'css/style.css', 'manifest.json',
   'js/app.js', 'js/router.js', 'js/supabase.js', 'js/api.js', 'js/ui.js',
-  'js/config.js', 'js/saisie.js', 'js/ordre-ligues.js', 'js/stats-calculs.js',
+  'js/config.js', 'js/saisie.js', 'js/etat-prono.js', 'js/ordre-ligues.js',
+  'js/stats-calculs.js',
   'js/badges.js',
   'js/pages/accueil.js', 'js/pages/classement.js', 'js/pages/equipe.js',
   'js/pages/match.js', 'js/pages/mes-paris.js', 'js/pages/reglages.js',

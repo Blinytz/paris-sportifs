@@ -76,6 +76,18 @@ Précisions :
 - Les bonus sont réglables dans la page Réglages (lus à chaque run,
   règle 10). `python scripts/settle_bets.py --test` vérifie la grille.
 
+## Cycle de vie d'un pronostic
+
+- Dès que les deux scores sont saisis, le pronostic est enregistré comme
+  brouillon et reste modifiable jusqu'à l'heure du coup d'envoi.
+- L'heure du coup d'envoi verrouille toujours la saisie, même si le statut
+  fourni par l'API sportive est encore provisoirement `scheduled`.
+- Au passage serveur suivant, le brouillon verrouillé devient un pari et
+  la mise est débitée. Pendant ce délai, l'interface affiche « validation
+  en cours » et ne présente plus le score comme modifiable.
+- Convention visuelle : gris pour vide ou annulé, or pour enregistré,
+  bleu pour verrouillé/en jeu, vert pour gagné et rouge pour perdu.
+
 ## Quota API : sync par date (refonte du 21/07/2026)
 
 Quota : 100 requêtes/jour par sous-API (foot et rugby séparés, reset à

@@ -32,12 +32,14 @@ export function casesScore(match, brouillon, { taille = '', mise = 100 } = {}) {
     <div class="cases-score" data-match="${match.id}"
          data-sport="${echapper(match.league?.sport || 'football')}"
          data-mise="${echapper(miseEffective)}">
-      <input class="case-score ${taille}" data-camp="home" type="number"
+      <input class="case-score ${taille} ${val(brouillon?.predicted_home) !== '' ? 'rempli' : ''}"
+             data-camp="home" type="number"
              min="0" max="199" inputmode="numeric"
              value="${val(brouillon?.predicted_home)}"
              aria-label="Score ${echapper(match.home?.name)}">
       <span class="deux-points">:</span>
-      <input class="case-score ${taille}" data-camp="away" type="number"
+      <input class="case-score ${taille} ${val(brouillon?.predicted_away) !== '' ? 'rempli' : ''}"
+             data-camp="away" type="number"
              min="0" max="199" inputmode="numeric"
              value="${val(brouillon?.predicted_away)}"
              aria-label="Score ${echapper(match.away?.name)}">

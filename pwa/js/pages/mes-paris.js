@@ -6,6 +6,9 @@
 import {
   collecter, mesParis, soldeEclats, supprimerBrouillon, tousLesBrouillons,
 } from '../api.js';
+import {
+  classeCasesPronostic, classeGainPari, etatTemporelMatch, matchOuvert,
+} from '../etat-prono.js';
 import { embleme, nomLigue } from '../ordre-ligues.js';
 import {
   blason, dateHeure, echapper, eclats, envoyerPieces, erreur, gainPari,
@@ -40,11 +43,12 @@ function nbPieces(montant) {
 function rendre(conteneur, paris, brouillons = [], solde = 0) {
   const aCollecter = paris.filter(
     (p) => !p.collected_at && (p.status === 'won' || p.status === 'void'));
-  // Paris validés dont le match n'est pas terminé : en direct ou à venir
-  const enDirect = paris.filter(
-    (p) => p.status === 'pending' && p.match?.status === 'live');
+  // L'heure du coup d'envoi prime sur un statut sportif éventuellement
+  // en retard : un pari passé ne retourne jamais parmi les paris à venir.
+  const enDirect = paris.filter((p) => p.status === 'pending'
+    && etatTemporelMatch(p.match) !== 'a-venir');
   const enAttente = paris.filter(
-    (p) => p.status === 'pending' && p.match?.status !== 'live');
+    (p) => p.status === 'pending' && etatTemporelMatch(p.match) === 'a-venir');
   const historique = paris.filter(
     (p) => p.status === 'lost' || p.collected_at);
 
@@ -56,15 +60,17 @@ function rendre(conteneur, paris, brouillons = [], solde = 0) {
 
 
   // Brouillons à venir vs brouillons rejetés au coup d'envoi
-  const enAttenteValidation = brouillons.filter((d) => !d.rejected_at);
+  const brouillonsActifs = brouillons.filter((d) => !d.rejected_at);
+  const modifiables = brouillonsActifs.filter((d) => matchOuvert(d.match));
+  const enAttenteValidation = brouillonsActifs.filter((d) => !matchOuvert(d.match));
   const rejetes = brouillons.filter((d) => d.rejected_at);
-  const engage = enAttenteValidation.reduce(
+  const engage = brouillonsActifs.reduce(
     (s, d) => s + Number(d.stake_eclats), 0);
   const manque = engage - solde;
 
   conteneur.innerHTML = `
     <h1>Mes paris</h1>
-    ${enAttenteValidation.length
+    ${brouillonsActifs.length
       ? bandeauEngagement(engage, solde, manque, aCollecter.length > 0) : ''}
     ${aCollecter.length ? `
       <div class="bandeau-collecte" id="bandeau-collecte">
@@ -77,9 +83,9 @@ function rendre(conteneur, paris, brouillons = [], solde = 0) {
       </div>
       ${aCollecter.map((p) => cartePari(p, true)).join('')}` : ''}
 
-    ${enDirect.length ? `<h2>● En direct (${enDirect.length})</h2>
-      <p class="faible">Score rafraîchi à chaque synchronisation,
-        environ toutes les deux heures.</p>
+    ${enDirect.length ? `<h2>🔒 En cours ou en règlement (${enDirect.length})</h2>
+      <p class="faible">Ces paris ne sont plus modifiables. Le statut et le
+        score sont rafraîchis à chaque synchronisation.</p>
       ${enDirect.map((p) => cartePari(p)).join('')}` : ''}
 
     ${enAttente.length ? `<h2>Paris validés (${enAttente.length})</h2>
@@ -90,8 +96,13 @@ function rendre(conteneur, paris, brouillons = [], solde = 0) {
         coup d'envoi. Aucun Éclat n'a été engagé.</p>
       ${rejetes.map(carteBrouillon).join('')}` : ''}
 
-    ${enAttenteValidation.length ? `<h2>Pronostics enregistrés (${enAttenteValidation.length})</h2>
+    ${enAttenteValidation.length ? `<h2>Validation en cours (${enAttenteValidation.length})</h2>
+      <p class="faible">Le coup d’envoi est passé : les scores sont verrouillés
+        et seront transformés en paris lors du prochain passage serveur.</p>
       ${enAttenteValidation.map(carteBrouillon).join('')}` : ''}
+
+    ${modifiables.length ? `<h2>Pronostics enregistrés (${modifiables.length})</h2>
+      ${modifiables.map(carteBrouillon).join('')}` : ''}
 
     ${historique.length ? `<h2>Historique</h2>
       ${historique.slice(0, 40).map((p) => cartePari(p)).join('')}` : ''}`;
@@ -104,17 +115,16 @@ function rendre(conteneur, paris, brouillons = [], solde = 0) {
 // l'utilisateur puisse réagir.
 function bandeauEngagement(engage, solde, manque, aRecolter) {
   if (manque <= 0) {
-    return `<p class="faible centre">${eclats(engage)} ✦ engagés sur tes
-      pronostics à venir, pour ${eclats(solde)} ✦ disponibles.</p>`;
+    return `<p class="faible centre">${eclats(engage)} ✦ prévus sur tes
+      pronostics non encore débités, pour ${eclats(solde)} ✦ disponibles.</p>`;
   }
   return `
     <div class="bandeau-alerte">
       <div>
         <strong>Il te manque ${eclats(manque)} ✦</strong>
-        <div class="sous">Tu as engagé ${eclats(engage)} ✦ sur tes pronostics
-          à venir mais ne possèdes que ${eclats(solde)} ✦. Au coup d'envoi,
-          les paris sont validés dans l'ordre des matchs : les derniers
-          seront refusés faute de solde.</div>
+        <div class="sous">Tu as prévu ${eclats(engage)} ✦ sur tes pronostics
+          non encore débités mais ne possèdes que ${eclats(solde)} ✦.
+          À leur validation, les derniers seront refusés faute de solde.</div>
         ${aRecolter ? `<div class="sous"><strong>Récolte tes gains en
           attente ci-dessus</strong> : ils ne comptent dans ton solde
           qu'une fois encaissés.</div>` : ''}
@@ -125,6 +135,8 @@ function bandeauEngagement(engage, solde, manque, aRecolter) {
 // Pronostic enregistré (ou rejeté au coup d'envoi)
 function carteBrouillon(d) {
   const m = d.match;
+  const modifiable = !d.rejected_at && matchOuvert(m);
+  const classeCases = classeCasesPronostic(m, null, d);
   if (d.rejected_at) {
     return `
       <div class="carte" data-brouillon="${d.id}">
@@ -139,9 +151,9 @@ function carteBrouillon(d) {
             <span class="nom">${echapper(m?.home?.name)}</span></div>
           <div class="bloc-score">
             <div class="cases-score">
-              <div class="score-fige">${d.predicted_home}</div>
+              <div class="score-fige annule">${d.predicted_home}</div>
               <span class="deux-points">:</span>
-              <div class="score-fige">${d.predicted_away}</div>
+              <div class="score-fige annule">${d.predicted_away}</div>
             </div>
           </div>
           <div class="equipe">${blason(m?.away)}
@@ -167,9 +179,9 @@ function carteBrouillon(d) {
           <span class="nom">${echapper(m?.home?.name)}</span></div>
         <div class="bloc-score">
           <div class="cases-score">
-            <div class="score-fige">${d.predicted_home}</div>
+            <div class="score-fige ${classeCases}">${d.predicted_home}</div>
             <span class="deux-points">:</span>
-            <div class="score-fige">${d.predicted_away}</div>
+            <div class="score-fige ${classeCases}">${d.predicted_away}</div>
           </div>
         </div>
         <div class="equipe">${blason(m?.away)}
@@ -177,7 +189,8 @@ function carteBrouillon(d) {
       </div>
       <div class="match-pied">
         <span class="libelle">Mise prévue ${eclats(d.stake_eclats)} ✦</span>
-        <span class="gain-pastille attente">modifiable</span>
+        <span class="gain-pastille ${modifiable ? 'enregistre' : 'en-jeu'}">
+          ${modifiable ? 'modifiable' : '🔒 verrouillé'}</span>
       </div>
     </a>`;
 }
@@ -185,7 +198,10 @@ function carteBrouillon(d) {
 function cartePari(p, recoltable = false) {
   const m = p.match;
   const termine = m?.status === 'finished';
-  const enDirect = m?.status === 'live';
+  const enDirect = etatTemporelMatch(m) === 'en-cours'
+    || etatTemporelMatch(m) === 'verrouille';
+  const classeCases = classeCasesPronostic(m, p);
+  const classeGain = classeGainPari(p);
   const montant = montantACollecter(p);
   return `
     <div class="carte" data-pari="${p.id}">
@@ -201,9 +217,9 @@ function cartePari(p, recoltable = false) {
         </a>
         <div class="bloc-score">
           <div class="cases-score">
-            <div class="score-fige">${termine || enDirect ? m.score_home ?? '?' : '?'}</div>
+            <div class="score-fige ${classeCases}">${termine || enDirect ? m.score_home ?? '?' : '?'}</div>
             <span class="deux-points">:</span>
-            <div class="score-fige">${termine || enDirect ? m.score_away ?? '?' : '?'}</div>
+            <div class="score-fige ${classeCases}">${termine || enDirect ? m.score_away ?? '?' : '?'}</div>
           </div>
           <div class="faible">pronostic ${p.predicted_home} - ${p.predicted_away}</div>
         </div>
@@ -211,7 +227,7 @@ function cartePari(p, recoltable = false) {
           ${blason(m?.away)}<span class="nom">${echapper(m?.away?.name)}</span>
         </a>
       </div>
-      <div class="match-pied">
+      <div class="match-pied resultat-${classeGain}">
         <div>
           <div class="libelle">${eclats(p.stake_eclats)} ✦ à ${echapper(Number(p.odds_at_bet).toFixed(2))}
             · ${LIBELLES[p.status] || echapper(p.status)}</div>

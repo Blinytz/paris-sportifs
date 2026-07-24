@@ -212,7 +212,9 @@ a.carte:active { transform: scale(.995); }
   outline: none; border-color: var(--or);
   box-shadow: 0 0 0 3px rgba(201, 162, 39, .18);
 }
-.case-score.rempli { border-color: var(--or); }
+.case-score.rempli {
+  border-color: var(--or); background: #fdf6e0; color: var(--or-fonce);
+}
 .case-score:disabled { opacity: .7; }
 .score-fige {
   width: 3rem; height: 3rem; border-radius: 12px;
@@ -222,6 +224,9 @@ a.carte:active { transform: scale(.995); }
   font-variant-numeric: tabular-nums;
 }
 /* États d'un pronostic, lisibles à la couleur des cases */
+.score-fige.enregistre {
+  border-color: var(--or); background: #fdf6e0; color: var(--or-fonce);
+}
 .score-fige.verrouille {
   border-color: var(--bleu); background: #eaf2fb; color: var(--bleu);
 }
@@ -277,6 +282,22 @@ a.carte:active { transform: scale(.995); }
 .gain-pastille.perdu { background: var(--rouge-clair); color: var(--rouge); }
 .gain-pastille.attente { background: var(--fond-doux); color: var(--texte-doux); }
 .gain-pastille.collecte { background: var(--or-clair); color: var(--or-fonce); }
+.gain-pastille.enregistre { background: #fdf6e0; color: var(--or-fonce); }
+.gain-pastille.en-jeu { background: #eaf2fb; color: var(--bleu); }
+.gain-pastille.annule { background: var(--fond-doux); color: var(--texte-doux); }
+
+/* Le rectangle de résultat reprend la même convention que les scores. */
+.match-pied.resultat-gagne,
+.match-pied.resultat-perdu,
+.match-pied.resultat-annule,
+.match-pied.resultat-en-jeu {
+  border-top: 0; border-radius: 10px; padding: .55rem .65rem;
+}
+.match-pied.resultat-gagne { background: var(--vert-clair); }
+.match-pied.resultat-perdu { background: var(--rouge-clair); }
+.match-pied.resultat-annule { background: var(--fond-doux); }
+.match-pied.resultat-en-jeu { background: #eaf2fb; }
+.statut-verrouille { color: var(--bleu); font-weight: 700; }
 
 /* ---------- Boutons ---------- */
 button {

@@ -7,6 +7,9 @@ import {
   enregistrerBrouillon, lireBrouillon, lireMatch, lireReglages, matchsEquipe,
   mesParisSurMatch, positionsDansLigue, statsCompetition, statsGlobales,
 } from '../api.js';
+import {
+  classeCasesPronostic, classeGainPari, etatTemporelMatch, matchOuvert,
+} from '../etat-prono.js';
 import { embleme, nomLigue } from '../ordre-ligues.js';
 import { brancherCases, casesScore } from '../saisie.js';
 import {
@@ -16,11 +19,6 @@ import {
 } from '../ui.js';
 
 const ISSUES = { home: 'domicile', draw: 'nul', away: 'extérieur' };
-const STATUTS = {
-  live: '● en direct', postponed: 'reporté', cancelled: 'annulé',
-  finished: 'terminé',
-};
-
 let ongletActif = 'avant';
 
 export async function pageMatch(conteneur, matchId) {
@@ -47,9 +45,10 @@ export async function pageMatch(conteneur, matchId) {
 
 function rendre(conteneur, match, cotes, paris, reglages, brouillon) {
   const termine = match.status === 'finished' && match.score_home !== null;
-  const enCours = match.status === 'live';
-  const ouvert = match.status === 'scheduled'
-    && new Date(match.kickoff_at) > new Date();
+  const etatMatch = etatTemporelMatch(match);
+  const enCours = etatMatch === 'en-cours' || etatMatch === 'verrouille';
+  const ouvert = matchOuvert(match);
+  const classeCases = classeCasesPronostic(match, paris[0], brouillon);
   const estChampionnat = match.league?.category === 'championnat';
 
   conteneur.innerHTML = `
@@ -57,7 +56,7 @@ function rendre(conteneur, match, cotes, paris, reglages, brouillon) {
       <div class="match-entete">
         <span class="competition">${embleme(match.league)}
           ${echapper(nomLigue(match.league))}</span>
-        <span>${echapper(STATUTS[match.status] || dateHeure(match.kickoff_at))}</span>
+        <span>${libelleStatutMatch(match)}</span>
       </div>
       <div class="match-corps">
         <a class="equipe" href="#/equipe/${match.home_team_id}">
@@ -65,9 +64,9 @@ function rendre(conteneur, match, cotes, paris, reglages, brouillon) {
         </a>
         <div class="bloc-score">
           <div class="cases-score">
-            <div class="score-fige">${termine || enCours ? match.score_home ?? '?' : '?'}</div>
+            <div class="score-fige ${classeCases}">${termine || enCours ? match.score_home ?? '?' : '?'}</div>
             <span class="deux-points">:</span>
-            <div class="score-fige">${termine || enCours ? match.score_away ?? '?' : '?'}</div>
+            <div class="score-fige ${classeCases}">${termine || enCours ? match.score_away ?? '?' : '?'}</div>
           </div>
           ${cotes ? `<div class="cotes-mini">
             <span>${nombre(cotes.home_odds, 2)}</span>
@@ -109,6 +108,16 @@ function rendre(conteneur, match, cotes, paris, reglages, brouillon) {
   chargerOnglet(conteneur, match, cotes, reglages);
 }
 
+function libelleStatutMatch(match) {
+  const etat = etatTemporelMatch(match);
+  if (etat === 'en-cours') return '<span style="color:var(--rouge)">● en direct</span>';
+  if (etat === 'verrouille') return '<span class="statut-verrouille">🔒 verrouillé</span>';
+  if (etat === 'termine') return 'terminé';
+  if (etat === 'reporte') return 'reporté';
+  if (etat === 'annule') return 'annulé';
+  return echapper(dateHeure(match.kickoff_at));
+}
+
 // ---------- Mes paris sur ce match ----------
 
 function blocMesParis(match, paris) {
@@ -118,8 +127,9 @@ function blocMesParis(match, paris) {
       ${paris.map((p) => {
         const recoltable = (p.status === 'won' || p.status === 'void') && !p.collected_at;
         const montant = p.status === 'won' ? gainPari(p) : Number(p.stake_eclats);
+        const classeGain = classeGainPari(p);
         return `
-        <div class="match-pied" data-pari="${p.id}" style="border-top:0;padding-top:0">
+        <div class="match-pied resultat-${classeGain}" data-pari="${p.id}">
           <div>
             <div class="libelle">${eclats(p.stake_eclats)} ✦ à
               ${echapper(Number(p.odds_at_bet).toFixed(2))}</div>
@@ -133,10 +143,10 @@ function blocMesParis(match, paris) {
             : p.status === 'won'
               ? `<span class="gain-pastille gagne">+${eclats(gainPari(p))} ✦</span>`
               : p.status === 'lost'
-                ? '<span class="gain-pastille perdu">perdu</span>'
+                ? `<span class="gain-pastille perdu">−${eclats(p.stake_eclats)} ✦</span>`
                 : p.status === 'void'
-                  ? '<span class="gain-pastille attente">remboursé</span>'
-                  : '<span class="gain-pastille attente">en cours</span>'}
+                  ? '<span class="gain-pastille annule">remboursé</span>'
+                  : '<span class="gain-pastille en-jeu">en cours</span>'}
         </div>`;
       }).join('')}
     </div>`;

@@ -14,6 +14,11 @@ const install = read("sql/install_complet.sql");
 const migration = read("sql/securite_administration.sql");
 const paliers = read("sql/paliers_reglables.sql");
 const reglages = read("pwa/js/pages/reglages.js");
+const accueil = read("pwa/js/pages/accueil.js");
+const mesParis = read("pwa/js/pages/mes-paris.js");
+const {
+  classeCasesPronostic, classeGainPari, etatTemporelMatch, matchOuvert,
+} = await import("../pwa/js/etat-prono.js");
 
 for (const [nom, sql] of [["schema", schema], ["installation complète", install]]) {
   test(`${nom} interdit l'insertion directe dans bets`,
@@ -33,6 +38,36 @@ test("le barème de points n'est plus figé dans la fonction",
 test("la page Réglages édite seuils et primes",
   reglages.includes("listePaliers") && reglages.includes("sauverPalier") &&
   reglages.includes("strictement croissants"));
+
+const maintenant = Date.parse("2026-07-24T18:00:00Z");
+const futur = { status: "scheduled", kickoff_at: "2026-07-24T19:00:00Z" };
+const passeEncorePlanifie = {
+  status: "scheduled", kickoff_at: "2026-07-24T17:00:00Z",
+};
+test("un match futur et planifié reste modifiable",
+  matchOuvert(futur, maintenant) &&
+  etatTemporelMatch(futur, maintenant) === "a-venir");
+test("l'heure verrouille un match même si le statut scheduled est en retard",
+  !matchOuvert(passeEncorePlanifie, maintenant) &&
+  etatTemporelMatch(passeEncorePlanifie, maintenant) === "verrouille");
+test("les cases distinguent enregistré, verrouillé, gagné, perdu et annulé",
+  classeCasesPronostic(futur, null, { id: "b" }, maintenant) === "enregistre" &&
+  classeCasesPronostic(passeEncorePlanifie, null, { id: "b" }, maintenant) === "verrouille" &&
+  classeCasesPronostic(passeEncorePlanifie, { status: "won" }, null, maintenant) === "gagne" &&
+  classeCasesPronostic(passeEncorePlanifie, { status: "lost" }, null, maintenant) === "perdu" &&
+  classeCasesPronostic(passeEncorePlanifie, { status: "void" }, null, maintenant) === "annule");
+test("le rectangle de résultat suit gagné, perdu, annulé ou en jeu",
+  classeGainPari({ status: "won" }) === "gagne" &&
+  classeGainPari({ status: "lost" }) === "perdu" &&
+  classeGainPari({ status: "void" }) === "annule" &&
+  classeGainPari({ status: "pending" }) === "en-jeu");
+test("les filtres rapides affichent le nom brut avec le drapeau",
+  accueil.includes("${embleme(l)} ${echapper(l.name)}") &&
+  !accueil.includes("${embleme(l)} ${echapper(nomLigue(l))}</button>"));
+test("Mes paris sépare les brouillons verrouillés des modifiables",
+  mesParis.includes("const modifiables =") &&
+  mesParis.includes("const enAttenteValidation =") &&
+  mesParis.includes("matchOuvert(d.match)"));
 
 const jsDirs = ["pwa/js", "pwa/js/pages"];
 for (const dir of jsDirs) {

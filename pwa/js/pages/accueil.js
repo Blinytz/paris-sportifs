@@ -8,6 +8,9 @@ import {
   brouillonsSurMatchs, dernieresCotes, listeLigues, lireReglages,
   majMiseParDefaut, matchsDuJour, mesParisSurMatchs,
 } from '../api.js';
+import {
+  classeCasesPronostic, classeGainPari, etatTemporelMatch, matchOuvert,
+} from '../etat-prono.js';
 import { embleme, nomLigue, trierLigues } from '../ordre-ligues.js';
 import { brancherCases, casesScore } from '../saisie.js';
 import {
@@ -71,7 +74,7 @@ function bandeauFiltres() {
   for (const l of trierLigues((liguesCache || []).filter(
     (l) => !etat.sport || l.sport === etat.sport))) {
     puces.push(`<button class="puce ${etat.leagueId === l.id ? 'actif' : ''}"
-      data-ligue="${l.id}">${embleme(l)} ${echapper(nomLigue(l))}</button>`);
+      data-ligue="${l.id}">${embleme(l)} ${echapper(l.name)}</button>`);
   }
   return `<div class="filtres">${puces.join('')}</div>`;
 }
@@ -211,9 +214,10 @@ function issueDe(h, a) {
 }
 
 function carteMatch(m, cote, parisDuMatch, brouillon, mise) {
-  const ouvert = m.status === 'scheduled' && new Date(m.kickoff_at) > new Date();
+  const ouvert = matchOuvert(m);
   const termine = m.status === 'finished' && m.score_home !== null;
-  const enCours = m.status === 'live';
+  const etatMatch = etatTemporelMatch(m);
+  const enCours = etatMatch === 'en-cours' || etatMatch === 'verrouille';
   const pari = parisDuMatch[0];
   const pronostic = pari || brouillon;
 
@@ -228,13 +232,7 @@ function carteMatch(m, cote, parisDuMatch, brouillon, mise) {
 
   // Couleur des cases selon l'état, pour tout lire d'un coup d'œil :
   // vide, pronostic enregistré, pari verrouillé, puis gagné/perdu/annulé
-  let etatCases = 'vide';
-  if (termine && pari) {
-    etatCases = pari.status === 'won' ? 'gagne'
-      : pari.status === 'lost' ? 'perdu' : 'annule';
-  } else if (termine) etatCases = 'joue';
-  else if (enCours || (pari && !termine)) etatCases = 'verrouille';
-  else if (brouillon) etatCases = 'enregistre';
+  const etatCases = classeCasesPronostic(m, pari, brouillon);
 
   const centre = ouvert
     ? casesScore(m, brouillon, { mise })
@@ -273,10 +271,12 @@ function carteMatch(m, cote, parisDuMatch, brouillon, mise) {
 }
 
 function etiquetteStatut(m) {
-  if (m.status === 'live') return '<span style="color:var(--rouge)">● en direct</span>';
-  if (m.status === 'finished') return 'terminé';
-  if (m.status === 'postponed') return 'reporté';
-  if (m.status === 'cancelled') return 'annulé';
+  const etatMatch = etatTemporelMatch(m);
+  if (etatMatch === 'en-cours') return '<span style="color:var(--rouge)">● en direct</span>';
+  if (etatMatch === 'verrouille') return '<span class="statut-verrouille">🔒 verrouillé</span>';
+  if (etatMatch === 'termine') return 'terminé';
+  if (etatMatch === 'reporte') return 'reporté';
+  if (etatMatch === 'annule') return 'annulé';
   return heure(m.kickoff_at);
 }
 
@@ -304,14 +304,17 @@ function piedCarte(m, pari, brouillon, parisDuMatch, termine, ouvert) {
     ? ` <span class="faible">+${parisDuMatch.length - 1}</span>` : '';
   let pastille;
   if (pari.status === 'won') {
-    pastille = `<span class="gain-pastille ${pari.collected_at ? 'gagne' : 'collecte'}">
-      ${pari.collected_at ? '' : '✦ '}+${eclats(gainPari(pari))} ✦</span>`;
+    pastille = `<span class="gain-pastille ${classeGainPari(pari)}">
+      +${eclats(gainPari(pari))} ✦${pari.collected_at ? '' : ' à récolter'}</span>`;
   } else if (pari.status === 'lost') {
-    pastille = '<span class="gain-pastille perdu">perdu</span>';
+    pastille = `<span class="gain-pastille ${classeGainPari(pari)}">
+      −${eclats(pari.stake_eclats)} ✦</span>`;
   } else if (pari.status === 'void') {
-    pastille = `<span class="gain-pastille attente">remboursé ${eclats(pari.stake_eclats)} ✦</span>`;
+    pastille = `<span class="gain-pastille ${classeGainPari(pari)}">
+      annulé · ${eclats(pari.stake_eclats)} ✦ rendus</span>`;
   } else {
-    pastille = `<span class="gain-pastille attente">${eclats(pari.stake_eclats)} ✦ en jeu</span>`;
+    pastille = `<span class="gain-pastille ${classeGainPari(pari)}">
+      ${eclats(pari.stake_eclats)} ✦ en jeu</span>`;
   }
   return `
     <div class="match-pied">
